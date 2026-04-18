@@ -7,6 +7,7 @@ from __future__ import annotations
 from datetime import date
 
 import streamlit as st
+from utils.toast_helper import set_toast, show_pending_toast
 
 from database.connection import SessionLocal
 from services.invoice_service import (
@@ -20,6 +21,7 @@ from services.invoice_service import (
 
 def render_invoice_form() -> None:
     st.header("🧾 Notas Fiscais")
+    show_pending_toast()
 
     tab_new, tab_history = st.tabs(["➕ Nova NF", "📋 Histórico"])
 
@@ -125,7 +127,7 @@ def _render_new_form() -> None:
                     notes=notes,
                 )
                 session.commit()
-                st.success(
+                set_toast(
                     f"✅ NF #{invoice.invoice_number} salva! "
                     f"Empresa: {company.name} — Valor: R$ {float(invoice.amount):,.2f}"
                 )
@@ -161,13 +163,19 @@ def _render_history() -> None:
             )
 
         with fc2:
-            filter_month = st.selectbox(
+            _inv_month_opts = {
+                "Todos": None,
+                **{date(2000, m, 1).strftime("%B").capitalize(): m for m in range(1, 13)}
+            }
+            _inv_month_label = st.selectbox(
                 "Mês",
-                options=list(range(1, 13)),
-                index=date.today().month - 1,
-                format_func=lambda m: date(2000, m, 1).strftime("%B").capitalize(),
+                options=list(_inv_month_opts.keys()),
+                index=list(_inv_month_opts.keys()).index(
+                    date(2000, date.today().month, 1).strftime("%B").capitalize()
+                ),
                 key="inv_hist_month",
             )
+            filter_month = _inv_month_opts[_inv_month_label]
 
         with fc3:
             filter_year = st.selectbox(
@@ -233,7 +241,7 @@ def _render_history() -> None:
                 found = delete_invoice(session, int(del_id))
                 if found:
                     session.commit()
-                    st.success(f"NF #{del_id} removida.")
+                    set_toast(f"✅ NF #{del_id} removida.")
                     st.rerun()
                 else:
                     st.error(f"NF #{del_id} não encontrada.")

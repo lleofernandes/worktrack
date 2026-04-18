@@ -7,6 +7,7 @@ from __future__ import annotations
 from datetime import date, datetime, time
 
 import streamlit as st
+from utils.toast_helper import set_toast, show_pending_toast
 
 from database.connection import SessionLocal
 from services.worklog_service import (
@@ -23,6 +24,7 @@ from utils.calculations import calc_worked_hours
 
 def render_worklog_form() -> None:
     st.header("⏱️ Controle de Horas")
+    show_pending_toast()
 
     tab_new, tab_history = st.tabs(["➕ Novo Apontamento", "📋 Histórico"])
 
@@ -80,9 +82,9 @@ def _render_new_form() -> None:
         col3, col4, col5, col6 = st.columns(4)
 
         with col3:
-            start_time = st.time_input("Início *", value=time(9, 0), step=1800)
+            start_time = st.time_input("Início *", value=time(8, 0), step=1800)
         with col4:
-            end_time = st.time_input("Término *", value=time(18, 0), step=1800)
+            end_time = st.time_input("Término *", value=time(17, 0), step=1800)
         with col5:
             break_minutes = st.number_input(
                 "Intervalo (min)",
@@ -97,7 +99,7 @@ def _render_new_form() -> None:
                 min_value=0.0,
                 max_value=24.0,
                 value=0.0,
-                step=0.5,
+                step=0.25,
                 format="%.2f",
             )
 
@@ -147,7 +149,7 @@ def _render_new_form() -> None:
                     project_id=project_id,
                 )
                 session.commit()
-                st.success(f"✅ Apontamento salvo! ID #{worklog.id} — {float(preview_hours):.2f}h registradas.")
+                set_toast(f"✅ Apontamento salvo! ID #{worklog.id} — {float(preview_hours):.2f}h registradas.")
                 st.rerun()
             except WorkLogValidationError as e:
                 st.error(f"❌ {e}")

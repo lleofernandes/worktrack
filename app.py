@@ -15,6 +15,9 @@ st.set_page_config(
 
 init_db()
 
+from ui.styles import inject_styles
+inject_styles()
+
 with st.sidebar:
     st.title("⏱️ Work Track")
     st.caption("Controle de horas & faturamento")

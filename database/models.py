@@ -1,6 +1,5 @@
 """
 models.py — Mapeamento ORM de todas as entidades do Work Track.
-Sem SQL hardcoded. Compatível com SQLite / PostgreSQL / SQL Server / MySQL.
 """
 import enum
 from datetime import datetime, date, time
@@ -16,19 +15,11 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 from database.connection import Base
 
 
-# ---------------------------------------------------------------------------
-# ENUM — Tipo de contrato
-# ---------------------------------------------------------------------------
-
 class ContractType(str, enum.Enum):
-    WORK_HOUR      = "WORK_HOUR"       # Hora a hora
-    PROJECT        = "PROJECT"         # Projeto fechado (valor fixo)
-    PROJECT_HOURS  = "PROJECT_HOURS"   # Projeto com controle de horas
+    WORK_HOUR      = "WORK_HOUR"
+    PROJECT        = "PROJECT"
+    PROJECT_HOURS  = "PROJECT_HOURS"
 
-
-# ---------------------------------------------------------------------------
-# 3.1 companies
-# ---------------------------------------------------------------------------
 
 class Company(Base):
     __tablename__ = "companies"
@@ -43,11 +34,9 @@ class Company(Base):
         default=ContractType.WORK_HOUR,
     )
     contract_number: Mapped[str | None] = mapped_column(String(100), nullable=True)
-    created_at: Mapped[datetime] = mapped_column(
-        DateTime, nullable=False, server_default=func.now()
-    )
+    end_date: Mapped[date | None] = mapped_column(Date, nullable=True)  # None = ativo
+    created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, server_default=func.now())
 
-    # Relacionamentos
     rate_history: Mapped[list["ContractRateHistory"]] = relationship(
         "ContractRateHistory", back_populates="company", cascade="all, delete-orphan"
     )
@@ -61,13 +50,13 @@ class Company(Base):
         "Invoice", back_populates="company", cascade="all, delete-orphan"
     )
 
+    @property
+    def is_active(self) -> bool:
+        return self.end_date is None
+
     def __repr__(self) -> str:
         return f"<Company id={self.id} name={self.name!r}>"
 
-
-# ---------------------------------------------------------------------------
-# 3.2 contract_rates_history
-# ---------------------------------------------------------------------------
 
 class ContractRateHistory(Base):
     __tablename__ = "contract_rates_history"
@@ -78,20 +67,13 @@ class ContractRateHistory(Base):
     )
     hour_rate: Mapped[Decimal] = mapped_column(Numeric(12, 2), nullable=False)
     start_date: Mapped[date] = mapped_column(Date, nullable=False)
-    end_date: Mapped[date | None] = mapped_column(Date, nullable=True)  # None = vigente
+    end_date: Mapped[date | None] = mapped_column(Date, nullable=True)
 
     company: Mapped["Company"] = relationship("Company", back_populates="rate_history")
 
     def __repr__(self) -> str:
-        return (
-            f"<ContractRateHistory company_id={self.company_id} "
-            f"rate={self.hour_rate} from={self.start_date}>"
-        )
+        return f"<ContractRateHistory company_id={self.company_id} rate={self.hour_rate}>"
 
-
-# ---------------------------------------------------------------------------
-# 3.3 projects
-# ---------------------------------------------------------------------------
 
 class Project(Base):
     __tablename__ = "projects"
@@ -102,22 +84,14 @@ class Project(Base):
     )
     name: Mapped[str] = mapped_column(String(255), nullable=False)
     description: Mapped[str | None] = mapped_column(Text, nullable=True)
-    created_at: Mapped[datetime] = mapped_column(
-        DateTime, nullable=False, server_default=func.now()
-    )
+    created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, server_default=func.now())
 
     company: Mapped["Company"] = relationship("Company", back_populates="projects")
-    work_logs: Mapped[list["WorkLog"]] = relationship(
-        "WorkLog", back_populates="project"
-    )
+    work_logs: Mapped[list["WorkLog"]] = relationship("WorkLog", back_populates="project")
 
     def __repr__(self) -> str:
         return f"<Project id={self.id} name={self.name!r}>"
 
-
-# ---------------------------------------------------------------------------
-# 3.4 work_logs
-# ---------------------------------------------------------------------------
 
 class WorkLog(Base):
     __tablename__ = "work_logs"
@@ -133,24 +107,16 @@ class WorkLog(Base):
     start_time: Mapped[time] = mapped_column(Time, nullable=False)
     end_time: Mapped[time] = mapped_column(Time, nullable=False)
     break_minutes: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
-    extra_partner_hours: Mapped[Decimal] = mapped_column(
-        Numeric(5, 2), nullable=False, default=Decimal("0.00")
-    )
+    extra_partner_hours: Mapped[Decimal] = mapped_column(Numeric(5, 2), nullable=False, default=Decimal("0.00"))
     description: Mapped[str | None] = mapped_column(Text, nullable=True)
-    created_at: Mapped[datetime] = mapped_column(
-        DateTime, nullable=False, server_default=func.now()
-    )
+    created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, server_default=func.now())
 
     company: Mapped["Company"] = relationship("Company", back_populates="work_logs")
     project: Mapped["Project | None"] = relationship("Project", back_populates="work_logs")
 
     def __repr__(self) -> str:
-        return f"<WorkLog id={self.id} date={self.date} company_id={self.company_id}>"
+        return f"<WorkLog id={self.id} date={self.date}>"
 
-
-# ---------------------------------------------------------------------------
-# 3.5 invoices
-# ---------------------------------------------------------------------------
 
 class Invoice(Base):
     __tablename__ = "invoices"
@@ -164,9 +130,7 @@ class Invoice(Base):
     amount: Mapped[Decimal] = mapped_column(Numeric(14, 2), nullable=False)
     origin: Mapped[str | None] = mapped_column(String(255), nullable=True)
     notes: Mapped[str | None] = mapped_column(String(255), nullable=True)
-    created_at: Mapped[datetime] = mapped_column(
-        DateTime, nullable=False, server_default=func.now()
-    )
+    created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, server_default=func.now())
 
     __table_args__ = (
         UniqueConstraint("company_id", "invoice_number", name="uq_invoice_company"),
@@ -175,12 +139,8 @@ class Invoice(Base):
     company: Mapped["Company"] = relationship("Company", back_populates="invoices")
 
     def __repr__(self) -> str:
-        return f"<Invoice id={self.id} number={self.invoice_number!r} company_id={self.company_id}>"
+        return f"<Invoice id={self.id} number={self.invoice_number!r}>"
 
-
-# ---------------------------------------------------------------------------
-# 3.6 holidays
-# ---------------------------------------------------------------------------
 
 class Holiday(Base):
     __tablename__ = "holidays"
@@ -189,6 +149,8 @@ class Holiday(Base):
     date: Mapped[date] = mapped_column(Date, nullable=False, unique=True)
     description: Mapped[str] = mapped_column(String(255), nullable=False)
     is_national: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    is_optional: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)  # facultativo
+    observation: Mapped[str | None] = mapped_column(String(255), nullable=True)
 
     def __repr__(self) -> str:
         return f"<Holiday date={self.date} description={self.description!r}>"
