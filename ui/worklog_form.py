@@ -80,9 +80,9 @@ def _render_new_form() -> None:
         col3, col4, col5, col6 = st.columns(4)
 
         with col3:
-            start_time = st.time_input("Início *", value=time(9, 0), step=300)
+            start_time = st.time_input("Início *", value=time(9, 0), step=1800)
         with col4:
-            end_time = st.time_input("Término *", value=time(18, 0), step=300)
+            end_time = st.time_input("Término *", value=time(18, 0), step=1800)
         with col5:
             break_minutes = st.number_input(
                 "Intervalo (min)",
@@ -97,7 +97,7 @@ def _render_new_form() -> None:
                 min_value=0.0,
                 max_value=24.0,
                 value=0.0,
-                step=0.25,
+                step=0.5,
                 format="%.2f",
             )
 
@@ -180,13 +180,17 @@ def _render_history() -> None:
             )
 
         with fc2:
-            filter_month = st.selectbox(
+            month_options = {
+                "Todos": None,
+                **{date(2000, m, 1).strftime("%B").capitalize(): m for m in range(1, 13)}
+            }
+            filter_month_label = st.selectbox(
                 "Mês",
-                options=list(range(1, 13)),
-                index=date.today().month - 1,
-                format_func=lambda m: date(2000, m, 1).strftime("%B").capitalize(),
+                options=list(month_options.keys()),
+                index=list(month_options.keys()).index(date(2000, date.today().month, 1).strftime("%B").capitalize()),
                 key="hist_month",
             )
+            filter_month = month_options[filter_month_label]
 
         with fc3:
             filter_year = st.selectbox(
