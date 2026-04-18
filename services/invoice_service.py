@@ -1,6 +1,6 @@
 """
 invoice_service.py — Regras de negócio para notas fiscais.
-Toda lógica fica aqui; o form (UI) apenas chama este service.
+Queries delegadas ao InvoiceRepository / CompanyRepository.
 """
 from __future__ import annotations
 
@@ -11,31 +11,19 @@ from typing import Optional
 from sqlalchemy.orm import Session
 
 from database.models import Company, Invoice
+from database.repository import CompanyRepository, InvoiceRepository
 
 
 # ---------------------------------------------------------------------------
-# Consultas auxiliares
+# Consultas auxiliares (facades para UI)
 # ---------------------------------------------------------------------------
 
 def get_all_companies(session: Session) -> list[Company]:
-    return session.query(Company).order_by(Company.name).all()
+    return CompanyRepository.get_all(session)
 
 
 def get_company_by_id(session: Session, company_id: int) -> Optional[Company]:
-    return session.get(Company, company_id)
-
-
-def invoice_number_exists(session: Session, company_id: int, invoice_number: str) -> bool:
-    """Verifica unicidade do número de NF por empresa."""
-    return (
-        session.query(Invoice)
-        .filter(
-            Invoice.company_id == company_id,
-            Invoice.invoice_number == invoice_number.strip(),
-        )
-        .first()
-        is not None
-    )
+    return CompanyRepository.get_by_id(session, company_id)
 
 
 # ---------------------------------------------------------------------------
@@ -54,10 +42,6 @@ def validate_invoice(
     notes: Optional[str],
     editing_id: Optional[int] = None,
 ) -> None:
-    """
-    Valida campos da NF. Lança InvoiceValidationError se inválido.
-    editing_id: quando não-None, ignora a própria NF na checagem de unicidade.
-    """
     if not invoice_number or not invoice_number.strip():
         raise InvoiceValidationError("Número da NF é obrigatório.")
 
@@ -67,23 +51,16 @@ def validate_invoice(
     if notes and len(notes) > 255:
         raise InvoiceValidationError("Observações devem ter no máximo 255 caracteres.")
 
-    # Unicidade: número de NF por empresa (ignora o próprio registro em edição)
-    existing = (
-        session.query(Invoice)
-        .filter(
-            Invoice.company_id == company_id,
-            Invoice.invoice_number == invoice_number.strip(),
-        )
-        .first()
-    )
-    if existing and (editing_id is None or existing.id != editing_id):
+    if InvoiceRepository.exists_by_number(
+        session, company_id, invoice_number, exclude_id=editing_id
+    ):
         raise InvoiceValidationError(
             f"Número de NF '{invoice_number}' já existe para esta empresa."
         )
 
 
 # ---------------------------------------------------------------------------
-# Criação
+# CRUD
 # ---------------------------------------------------------------------------
 
 def create_invoice(
@@ -95,10 +72,10 @@ def create_invoice(
     origin: Optional[str],
     notes: Optional[str],
 ) -> Invoice:
-    """Valida e persiste uma nova nota fiscal."""
     validate_invoice(session, company_id, invoice_number, amount, notes)
 
-    invoice = Invoice(
+    return InvoiceRepository.create(
+        session,
         company_id=company_id,
         issue_date=issue_date,
         invoice_number=invoice_number.strip(),
@@ -106,14 +83,7 @@ def create_invoice(
         origin=origin.strip() if origin else None,
         notes=notes.strip() if notes else None,
     )
-    session.add(invoice)
-    session.flush()
-    return invoice
 
-
-# ---------------------------------------------------------------------------
-# Listagem
-# ---------------------------------------------------------------------------
 
 def list_invoices(
     session: Session,
@@ -121,23 +91,8 @@ def list_invoices(
     month: Optional[int] = None,
     year: Optional[int] = None,
 ) -> list[Invoice]:
-    from sqlalchemy import extract
-
-    q = session.query(Invoice).order_by(Invoice.issue_date.desc())
-
-    if company_id:
-        q = q.filter(Invoice.company_id == company_id)
-    if year:
-        q = q.filter(extract("year", Invoice.issue_date) == year)
-    if month:
-        q = q.filter(extract("month", Invoice.issue_date) == month)
-
-    return q.all()
+    return InvoiceRepository.list_filtered(session, company_id, month, year)
 
 
 def delete_invoice(session: Session, invoice_id: int) -> bool:
-    obj = session.get(Invoice, invoice_id)
-    if obj:
-        session.delete(obj)
-        return True
-    return False
+    return InvoiceRepository.delete(session, invoice_id)

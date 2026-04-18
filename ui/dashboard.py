@@ -129,10 +129,12 @@ def _render_kpi_cards(metrics_list) -> None:
         f"{max(m.worked_days for m in metrics_list) if metrics_list else 0}",
     )
     h3.metric("Horas Esperadas", f"{float(total_expected):.1f}h")
+    hours_diff = total_worked - total_expected
     h4.metric(
         "Horas Trabalhadas",
         f"{float(total_worked):.1f}h",
-        delta=f"{float(total_worked - total_expected):.1f}h",
+        delta=f"{float(hours_diff):.1f}h",
+        delta_color="normal",
     )
     h5.metric("Horas Restantes", f"{float(total_remaining):.1f}h")
 
@@ -143,21 +145,27 @@ def _render_kpi_cards(metrics_list) -> None:
     r1, r2, r3, r4 = st.columns(4)
 
     r1.metric("Receita Esperada", f"R$ {float(total_expected_rev):,.2f}")
+    rev_color = "normal" if revenue_diff >= 0 else "inverse"
     r2.metric(
         "Receita Realizada",
         f"R$ {float(total_actual_rev):,.2f}",
         delta=f"R$ {float(revenue_diff):,.2f}",
+        delta_color=rev_color,
     )
-    r3.metric("Diferença", f"R$ {float(revenue_diff):,.2f}")
+    r3.metric(
+        "Diferença",
+        f"R$ {float(revenue_diff):,.2f}",
+        delta_color=rev_color,
+    )
 
     # Produtividade com cor
+    # delta_color="normal": delta positivo=verde, negativo=vermelho — comportamento correto
     prod_val = float(productivity)
-    color = "normal" if is_on_track else "inverse"
     r4.metric(
         "Produtividade",
         f"{prod_val:.1f}%",
         delta=f"{prod_val - 100:.1f}%",
-        delta_color=color,
+        delta_color="normal",
     )
 
     # Barra de progresso visual

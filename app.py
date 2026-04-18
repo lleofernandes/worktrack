@@ -25,7 +25,7 @@ with st.sidebar:
         index=0,
     )
     st.divider()
-    st.caption("v0.1.0 — Etapa 5")
+    st.caption("v1.0.0 — Etapa 5")
 
 if page == "⏱️ Controle de Horas":
     from ui.worklog_form import render_worklog_form

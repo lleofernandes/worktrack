@@ -1,6 +1,6 @@
 """
 worklog_service.py — Regras de negócio para apontamento de horas.
-Toda lógica fica aqui; o form (UI) apenas chama este service.
+Queries delegadas ao WorkLogRepository / ContractRateRepository.
 """
 from __future__ import annotations
 
@@ -12,42 +12,31 @@ from sqlalchemy.orm import Session
 
 from config import MAX_HOURS_PER_DAY
 from database.models import Company, ContractRateHistory, Project, WorkLog
+from database.repository import (
+    CompanyRepository,
+    ContractRateRepository,
+    ProjectRepository,
+    WorkLogRepository,
+)
 from utils.calculations import calc_worked_hours
 
 
 # ---------------------------------------------------------------------------
-# Consultas auxiliares
+# Consultas auxiliares (facades para UI)
 # ---------------------------------------------------------------------------
 
 def get_all_companies(session: Session) -> list[Company]:
-    return session.query(Company).order_by(Company.name).all()
+    return CompanyRepository.get_all(session)
 
 
 def get_projects_by_company(session: Session, company_id: int) -> list[Project]:
-    return (
-        session.query(Project)
-        .filter(Project.company_id == company_id)
-        .order_by(Project.name)
-        .all()
-    )
+    return ProjectRepository.get_all_by_company(session, company_id)
 
 
-def get_active_rate(session: Session, company_id: int, ref_date: date) -> Optional[ContractRateHistory]:
-    """
-    Busca o hour_rate vigente para a empresa na data informada.
-    Regra: start_date <= ref_date AND (end_date IS NULL OR end_date >= ref_date)
-    """
-    return (
-        session.query(ContractRateHistory)
-        .filter(
-            ContractRateHistory.company_id == company_id,
-            ContractRateHistory.start_date <= ref_date,
-            (ContractRateHistory.end_date == None)  # noqa: E711
-            | (ContractRateHistory.end_date >= ref_date),
-        )
-        .order_by(ContractRateHistory.start_date.desc())
-        .first()
-    )
+def get_active_rate(
+    session: Session, company_id: int, ref_date: date
+) -> Optional[ContractRateHistory]:
+    return ContractRateRepository.get_active_rate(session, company_id, ref_date)
 
 
 # ---------------------------------------------------------------------------
@@ -66,7 +55,7 @@ def validate_worklog(
     extra_partner_hours: float,
 ) -> Decimal:
     """
-    Valida os campos do apontamento e retorna as horas calculadas.
+    Valida campos do apontamento e retorna as horas calculadas.
     Lança WorkLogValidationError em caso de inconsistência.
     """
     if start_time >= end_time:
@@ -92,7 +81,7 @@ def validate_worklog(
 
 
 # ---------------------------------------------------------------------------
-# Criação
+# CRUD
 # ---------------------------------------------------------------------------
 
 def create_worklog(
@@ -106,14 +95,10 @@ def create_worklog(
     description: Optional[str],
     project_id: Optional[int],
 ) -> WorkLog:
-    """
-    Valida e persiste um novo apontamento de horas.
-    Retorna o objeto WorkLog criado.
-    """
-    # Valida e calcula horas (lança WorkLogValidationError se inválido)
     validate_worklog(date_, start_time, end_time, break_minutes, extra_partner_hours)
 
-    worklog = WorkLog(
+    return WorkLogRepository.create(
+        session,
         company_id=company_id,
         project_id=project_id or None,
         date=date_,
@@ -123,14 +108,7 @@ def create_worklog(
         extra_partner_hours=Decimal(str(extra_partner_hours)),
         description=description or None,
     )
-    session.add(worklog)
-    session.flush()  # Gera o ID sem fazer commit (commit é feito pelo get_session)
-    return worklog
 
-
-# ---------------------------------------------------------------------------
-# Listagem
-# ---------------------------------------------------------------------------
 
 def list_worklogs(
     session: Session,
@@ -138,25 +116,8 @@ def list_worklogs(
     month: Optional[int] = None,
     year: Optional[int] = None,
 ) -> list[WorkLog]:
-    """Lista apontamentos com filtros opcionais."""
-    from sqlalchemy import extract
-
-    q = session.query(WorkLog).order_by(WorkLog.date.desc(), WorkLog.start_time.desc())
-
-    if company_id:
-        q = q.filter(WorkLog.company_id == company_id)
-    if year:
-        q = q.filter(extract("year", WorkLog.date) == year)
-    if month:
-        q = q.filter(extract("month", WorkLog.date) == month)
-
-    return q.all()
+    return WorkLogRepository.list_filtered(session, company_id, month, year)
 
 
 def delete_worklog(session: Session, worklog_id: int) -> bool:
-    """Remove um apontamento. Retorna True se encontrado e deletado."""
-    obj = session.get(WorkLog, worklog_id)
-    if obj:
-        session.delete(obj)
-        return True
-    return False
+    return WorkLogRepository.delete(session, worklog_id)
