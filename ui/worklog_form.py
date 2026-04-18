@@ -232,19 +232,17 @@ def _render_history() -> None:
                 "Intervalo": f"{w.break_minutes}min",
                 "Horas": f"{hours:.2f}h",
                 "Receita": f"R$ {revenue:,.2f}",
+                "_revenue_raw": revenue,
                 "Descrição": (w.description or "")[:60],
             })
 
         import pandas as pd
-        df = pd.DataFrame(rows)
+        df = pd.DataFrame([{k: v for k, v in r.items() if k != "_revenue_raw"} for r in rows])
         st.dataframe(df, use_container_width=True, hide_index=True)
 
         # Totais
-        total_hours = sum(float(r["Horas"].replace("h", "")) for r in rows)
-        total_revenue = sum(
-            float(r["Receita"].replace("R$ ", "").replace(".", "").replace(",", "."))
-            for r in rows
-        )
+        total_hours = sum(float(r["Horas"].replace("h", "")) for r in rows)  # já é string segura
+        total_revenue = sum(r["_revenue_raw"] for r in rows)
 
         t1, t2, t3 = st.columns(3)
         t1.metric("Total de registros", len(rows))

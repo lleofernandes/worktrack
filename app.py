@@ -21,20 +21,20 @@ with st.sidebar:
     st.divider()
     page = st.radio(
         "Menu",
-        options=["Controle de Horas", "Notas Fiscais", "Dashboard"],
+        options=["📊 Dashboard", "⏱️ Controle de Horas", "🧾 Notas Fiscais"],
         index=0,
     )
     st.divider()
-    st.caption("v0.1.0 — Etapa 3")
+    st.caption("v0.1.0 — Etapa 5")
 
-if page == "Controle de Horas":
+if page == "⏱️ Controle de Horas":
     from ui.worklog_form import render_worklog_form
     render_worklog_form()
 
-elif page == "Notas Fiscais":
+elif page == "🧾 Notas Fiscais":
     from ui.invoice_form import render_invoice_form
     render_invoice_form()
 
-elif page == "Dashboard":
-    st.header("📊 Dashboard")
-    st.info("Em desenvolvimento — Etapa 5.")
+elif page == "📊 Dashboard":
+    from ui.dashboard import render_dashboard
+    render_dashboard()

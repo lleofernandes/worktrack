@@ -24,14 +24,14 @@ def seed():
         imaps = Company(
             name="iMaps",
             fantasy_name="iMaps Analytics",
-            cnpj="00.000.000/0001-01",
+            cnpj="11.564.730/0001-31",
             contract_type=ContractType.WORK_HOUR,
             contract_number="CT-2024-001",
         )
         oleon = Company(
             name="Oleon Brasil",
             fantasy_name="Oleon Brasil Ltda",
-            cnpj="00.000.000/0001-02",
+            cnpj="61.278.875/0001-44",
             contract_type=ContractType.WORK_HOUR,
             contract_number="CT-2024-002",
         )
