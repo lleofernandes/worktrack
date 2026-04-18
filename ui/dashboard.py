@@ -3,6 +3,7 @@ dashboard.py — Dashboard analítico (por contrato).
 """
 from __future__ import annotations
 
+from collections import defaultdict
 from datetime import date
 from decimal import Decimal
 
@@ -12,12 +13,12 @@ import streamlit as st
 from database.connection import SessionLocal
 from database.models import Contract
 from database.repository import (
-    CompanyRepository, ContractRepository,
-    InvoiceRepository, WorkLogRepository,
+    ContractRepository,
+    InvoiceRepository,
+    WorkLogRepository,
 )
 from services.analytics_service import (
     get_all_contracts_metrics,
-    get_company_bar_data,
     get_daily_revenue,
     get_monthly_evolution,
     get_monthly_metrics,
@@ -26,69 +27,129 @@ from utils.calculations import calc_productivity
 from utils.toast_helper import show_pending_toast
 
 
+_STATUS_MAP = {"Todos": None, "Ativo": True, "Inativo": False}
+
+
 def render_dashboard() -> None:
     st.header("📊 Dashboard Analítico")
     show_pending_toast()
 
     session = SessionLocal()
     try:
-        contracts = ContractRepository.get_all(session)
-        if not contracts:
-            st.warning("Nenhum contrato cadastrado.")
-            return
-
-        # ── Filtros ──────────────────────────────────────────────────────
         with st.container(border=True):
-            fc1, fc2, fc3 = st.columns(3)
+            fc1, fc2, fc3, fc4 = st.columns(4)
+
             with fc1:
-                year = st.selectbox("Ano",
-                                     list(range(date.today().year - 2, date.today().year + 1)),
-                                     index=2, key="dash_year")
+                status_sel    = st.selectbox("Status Contrato", list(_STATUS_MAP.keys()), key="dash_status")
+                filter_active = _STATUS_MAP[status_sel]
+
             with fc2:
-                month = st.selectbox("Mês", list(range(1, 13)),
-                                      index=date.today().month - 1,
-                                      format_func=lambda m: date(2000, m, 1).strftime("%B").capitalize(),
-                                      key="dash_month")
+                month_opts = {"Todos": None}
+                month_opts.update({
+                    date(2021, m, 1).strftime("%B").capitalize(): m
+                    for m in range(1, 13)
+                })
+                month_labels    = list(month_opts.keys())
+                cur_month_label = date(2021, date.today().month, 1).strftime("%B").capitalize()
+                month_sel       = st.selectbox("Mês", month_labels,
+                                               index=month_labels.index(cur_month_label),
+                                               key="dash_month")
+                filter_month = month_opts[month_sel]
+
             with fc3:
+                year_opts = ["Todos"] + list(range(date.today().year - 2, date.today().year + 1))
+                year_sel  = st.selectbox("Ano", year_opts,
+                                         index=year_opts.index(date.today().year),
+                                         key="dash_year")
+                filter_year = None if year_sel == "Todos" else int(year_sel)
+
+            with fc4:
+                contracts = sorted(
+                    ContractRepository.get_all(session, active_only=filter_active),
+                    key=lambda c: c.id, reverse=True,
+                )
                 ct_opts = {"Todos": None}
                 ct_opts.update({
-                    f"[{ct.id}] {ct.company.name if ct.company else '?'} — {ct.contract_number or 'S/N'}": ct.id
+                    f"[{ct.id}] {ct.company.name if ct.company else '?'}  — {ct.contract_number or 'S/N'}": ct.id
                     for ct in contracts
                 })
                 sel = st.selectbox("Contrato", list(ct_opts.keys()), key="dash_contract")
                 filter_contract_id = ct_opts[sel]
 
+        if not contracts:
+            st.warning("Nenhum contrato encontrado para o status selecionado.")
+            st.stop()
+
+        years_range  = _resolve_years(filter_year)
+        months_range = _resolve_months(filter_month)
+
         st.divider()
 
-        # ── Alerta NF Pendente ───────────────────────────────────────────
-        _render_nf_alert(session, contracts, year, filter_contract_id)
+        for yr in years_range:
+            _render_nf_alert(session, contracts, yr, filter_contract_id)
         st.divider()
 
-        # ── KPI Cards ────────────────────────────────────────────────────
-        if filter_contract_id:
-            metrics_list = [get_monthly_metrics(session, filter_contract_id, year, month)]
-        else:
-            metrics_list = get_all_contracts_metrics(session, year, month)
+        # ── Coleta métricas UMA ÚNICA VEZ com active_only correto ────────
+        metrics_list = []
+        for yr in years_range:
+            for mo in months_range:
+                if filter_contract_id:
+                    metrics_list.append(
+                        get_monthly_metrics(session, filter_contract_id, yr, mo)
+                    )
+                else:
+                    metrics_list.extend(
+                        get_all_contracts_metrics(
+                            session, yr, mo, active_only=filter_active
+                        )
+                    )
 
+        period_label = _period_label(filter_year, filter_month)
+        st.caption(f"📅 Período: **{period_label}**")
         _render_kpi_cards(metrics_list)
         st.divider()
 
-        # ── Gráficos ─────────────────────────────────────────────────────
         col_bar, col_line = st.columns(2)
         with col_bar:
-            _render_hours_by_contract(session, year, month)
+            # Reutiliza metrics_list — sem nova chamada ao service/banco
+            _render_hours_by_contract_from_metrics(metrics_list)
         with col_line:
             target_id = filter_contract_id or (contracts[0].id if contracts else None)
             if target_id:
-                _render_monthly_evolution(session, target_id, year)
+                evo_year = filter_year or date.today().year
+                _render_monthly_evolution(session, target_id, evo_year)
 
-        # ── Detalhe diário ───────────────────────────────────────────────
-        if filter_contract_id:
+        if filter_contract_id and filter_year and filter_month:
             st.divider()
-            _render_daily_detail(session, filter_contract_id, year, month)
+            _render_daily_detail(session, filter_contract_id, filter_year, filter_month)
 
     finally:
         session.close()
+
+
+# ---------------------------------------------------------------------------
+# Helpers de período
+# ---------------------------------------------------------------------------
+
+def _resolve_years(filter_year) -> list[int]:
+    if filter_year:
+        return [filter_year]
+    today = date.today()
+    return list(range(today.year - 2, today.year + 1))
+
+
+def _resolve_months(filter_month) -> list[int]:
+    return [filter_month] if filter_month else list(range(1, 13))
+
+
+def _period_label(filter_year, filter_month) -> str:
+    if filter_year and filter_month:
+        return date(filter_year, filter_month, 1).strftime("%B/%Y").capitalize()
+    if filter_year:
+        return f"Ano {filter_year} (todos os meses)"
+    if filter_month:
+        return f"{date(2021, filter_month, 1).strftime('%B').capitalize()} (todos os anos)"
+    return "Todos os períodos"
 
 
 # ---------------------------------------------------------------------------
@@ -96,8 +157,10 @@ def render_dashboard() -> None:
 # ---------------------------------------------------------------------------
 
 def _render_nf_alert(session, contracts, year: int, filter_contract_id) -> None:
-    target = ([c for c in contracts if c.id == filter_contract_id]
-              if filter_contract_id else contracts)
+    target = (
+        [c for c in contracts if c.id == filter_contract_id]
+        if filter_contract_id else contracts
+    )
 
     pendentes, em_andamento = [], []
     today = date.today()
@@ -110,21 +173,23 @@ def _render_nf_alert(session, contracts, year: int, filter_contract_id) -> None:
         for m in sorted(months_logs):
             if m not in months_nf:
                 is_current = (year == today.year and m == today.month)
-                item = {"Contrato": label,
-                        "Mês/Ano": date(year, m, 1).strftime("%B/%Y").capitalize(),
-                        "Status": "🔄 Em andamento" if is_current else "⚠️ NF Pend. de Envio"}
+                item = {
+                    "Contrato": label,
+                    "Mês/Ano": date(year, m, 1).strftime("%B/%Y").capitalize(),
+                    "Status": "🔄 Em andamento" if is_current else "⚠️ NF Pend. de Envio",
+                }
                 (em_andamento if is_current else pendentes).append(item)
 
     if not pendentes and not em_andamento:
-        st.success(f"✅ Todas as NFs do ano {year} estão em dia!")
+        st.success(f"✅ Todas as NFs de {year} estão em dia!")
         return
 
     if pendentes:
-        st.warning(f"⚠️ **{len(pendentes)} NF(s) pendente(s) de envio** — meses com horas sem NF emitida.")
+        st.warning(f"⚠️ **{len(pendentes)} NF(s) pendente(s) — {year}**")
         st.dataframe(pd.DataFrame(pendentes), use_container_width=True, hide_index=True)
 
     if em_andamento:
-        with st.expander(f"🔄 {len(em_andamento)} mês(es) em andamento (NF ainda não emitida — normal)"):
+        with st.expander(f"🔄 {len(em_andamento)} mês(es) em andamento em {year} (NF ainda não emitida — normal)"):
             st.dataframe(pd.DataFrame(em_andamento), use_container_width=True, hide_index=True)
 
 
@@ -137,24 +202,24 @@ def _render_kpi_cards(metrics_list) -> None:
         st.info("Sem dados para o período.")
         return
 
-    total_worked   = sum(m.worked_hours for m in metrics_list)
-    total_expected = sum(m.expected_hours for m in metrics_list)
-    total_actual   = sum(m.actual_revenue for m in metrics_list)
+    total_worked   = sum(m.worked_hours     for m in metrics_list)
+    total_expected = sum(m.expected_hours   for m in metrics_list)
+    total_actual   = sum(m.actual_revenue   for m in metrics_list)
     total_exp_rev  = sum(m.expected_revenue for m in metrics_list)
-    total_remain   = sum(m.remaining_hours for m in metrics_list)
+    total_remain   = sum(m.remaining_hours  for m in metrics_list)
     rev_diff       = total_actual - total_exp_rev
     prod           = float(calc_productivity(total_worked, total_expected))
-    biz_days       = max((m.business_days for m in metrics_list), default=0)
-    worked_days    = max((m.worked_days   for m in metrics_list), default=0)
+    biz_days       = sum(m.business_days for m in metrics_list)
+    worked_days    = sum(m.worked_days   for m in metrics_list)
 
     st.subheader("⏱️ Horas")
     c1, c2, c3, c4, c5 = st.columns(5)
-    c1.metric("Dias Úteis",       f"{biz_days}")
-    c2.metric("Dias Trabalhados", f"{worked_days}")
-    c3.metric("Horas Esperadas",  f"{float(total_expected):.1f}h")
+    c1.metric("Dias Úteis",        f"{biz_days}")
+    c2.metric("Dias Trabalhados",  f"{worked_days}")
+    c3.metric("Horas Esperadas",   f"{float(total_expected):.1f}h")
     c4.metric("Horas Trabalhadas", f"{float(total_worked):.1f}h",
               delta=f"{float(total_worked - total_expected):.1f}h")
-    c5.metric("Horas Restantes",  f"{float(total_remain):.1f}h")
+    c5.metric("Horas Restantes",   f"{float(total_remain):.1f}h")
 
     st.divider()
     st.subheader("💰 Receita & Produtividade")
@@ -169,40 +234,50 @@ def _render_kpi_cards(metrics_list) -> None:
               delta=f"{prod - 100:.1f}%")
 
     icon = "🟢" if prod >= 100 else "🔴"
-    st.caption(f"{icon} Produtividade: {prod:.1f}%")
+    st.caption(f"{icon} Produtividade consolidada: {prod:.1f}%")
     st.progress(min(prod / 100, 1.0))
 
 
 # ---------------------------------------------------------------------------
-# Bar chart
+# Bar chart — reutiliza metrics_list, zero chamadas extras ao banco
 # ---------------------------------------------------------------------------
 
-def _render_hours_by_contract(session, year: int, month: int) -> None:
+def _render_hours_by_contract_from_metrics(metrics_list) -> None:
     st.subheader("📊 Horas por Contrato")
-    bar_data = get_company_bar_data(session, year, month)
-    if not bar_data:
+
+    totals: dict[str, dict] = defaultdict(lambda: {"Horas": 0.0, "Receita (R$)": 0.0})
+
+    for m in metrics_list:
+        if float(m.worked_hours) > 0:
+            totals[m.company_name]["Horas"]        += float(m.worked_hours)
+            totals[m.company_name]["Receita (R$)"] += float(m.actual_revenue)
+
+    if not totals:
         st.info("Sem dados no período.")
         return
 
-    df = pd.DataFrame([
-        {"Contrato": b.company_name,
-         "Horas": float(b.worked_hours),
-         "Receita (R$)": float(b.actual_revenue)}
-        for b in bar_data
-    ]).sort_values("Horas", ascending=False)
+    df = (
+        pd.DataFrame([{"Contrato": k, **v} for k, v in totals.items()])
+        .sort_values("Horas", ascending=False)
+    )
 
     t1, t2 = st.tabs(["Horas", "Receita"])
-    with t1: st.bar_chart(df.set_index("Contrato")["Horas"])
-    with t2: st.bar_chart(df.set_index("Contrato")["Receita (R$)"])
+    with t1:
+        st.bar_chart(df.set_index("Contrato")["Horas"])
+    with t2:
+        st.bar_chart(df.set_index("Contrato")["Receita (R$)"])
 
 
 # ---------------------------------------------------------------------------
-# Line chart
+# Line chart — evolução mensal
 # ---------------------------------------------------------------------------
 
 def _render_monthly_evolution(session, contract_id: int, year: int) -> None:
-    ct = session.get(Contract, contract_id)
-    label = f"{ct.company.name if ct and ct.company else '?'} — {ct.contract_number or 'S/N'}" if ct else f"#{contract_id}"
+    ct    = session.get(Contract, contract_id)
+    label = (
+        f"{ct.company.name if ct and ct.company else '?'} — {ct.contract_number or 'S/N'}"
+        if ct else f"#{contract_id}"
+    )
     st.subheader(f"📈 Evolução — {label}")
 
     ev = get_monthly_evolution(session, contract_id, year)
@@ -211,7 +286,7 @@ def _render_monthly_evolution(session, contract_id: int, year: int) -> None:
         return
 
     df = pd.DataFrame([{
-        "Mês": date(e.year, e.month, 1).strftime("%b/%Y"),
+        "Mês":               date(e.year, e.month, 1).strftime("%b/%Y"),
         "Horas Trabalhadas": float(e.worked_hours),
         "Horas Esperadas":   float(e.expected_hours),
         "Receita Realizada": float(e.actual_revenue),
@@ -220,8 +295,10 @@ def _render_monthly_evolution(session, contract_id: int, year: int) -> None:
     } for e in ev])
 
     t1, t2, t3 = st.tabs(["Horas", "Receita", "Produtividade"])
-    with t1: st.line_chart(df.set_index("Mês")[["Horas Trabalhadas", "Horas Esperadas"]])
-    with t2: st.line_chart(df.set_index("Mês")[["Receita Realizada", "Receita Esperada"]])
+    with t1:
+        st.line_chart(df.set_index("Mês")[["Horas Trabalhadas", "Horas Esperadas"]])
+    with t2:
+        st.line_chart(df.set_index("Mês")[["Receita Realizada", "Receita Esperada"]])
     with t3:
         st.line_chart(df.set_index("Mês")["Produtividade (%)"])
         st.caption("🔴 < 100% abaixo da meta | 🟢 ≥ 100% acima da meta")
@@ -232,22 +309,28 @@ def _render_monthly_evolution(session, contract_id: int, year: int) -> None:
 # ---------------------------------------------------------------------------
 
 def _render_daily_detail(session, contract_id: int, year: int, month: int) -> None:
-    ct = session.get(Contract, contract_id)
+    ct    = session.get(Contract, contract_id)
     label = f"{ct.company.name if ct and ct.company else '?'}" if ct else f"#{contract_id}"
-    st.subheader(f"📅 Detalhe Diário — {label} ({date(year, month, 1).strftime('%B/%Y').capitalize()})")
+    st.subheader(
+        f"📅 Detalhe Diário — {label} ({date(year, month, 1).strftime('%B/%Y').capitalize()})"
+    )
 
     daily = get_daily_revenue(session, contract_id, year, month)
     if not daily:
         st.info("Sem apontamentos no período.")
         return
 
-    df = pd.DataFrame([{"Data": d.date.strftime("%d/%m/%Y"),
-                         "Horas": float(d.worked_hours),
-                         "Receita (R$)": float(d.revenue)} for d in daily])
+    df = pd.DataFrame([{
+        "Data":         d.date.strftime("%d/%m/%Y"),
+        "Horas":        float(d.worked_hours),
+        "Receita (R$)": float(d.revenue),
+    } for d in daily])
 
     c1, c2 = st.columns(2)
-    with c1: st.bar_chart(df.set_index("Data")["Horas"])
-    with c2: st.bar_chart(df.set_index("Data")["Receita (R$)"])
+    with c1:
+        st.bar_chart(df.set_index("Data")["Horas"])
+    with c2:
+        st.bar_chart(df.set_index("Data")["Receita (R$)"])
 
     with st.expander("Ver tabela"):
         df2 = df.copy()
@@ -255,6 +338,6 @@ def _render_daily_detail(session, contract_id: int, year: int, month: int) -> No
         df2["Receita (R$)"] = df2["Receita (R$)"].apply(lambda x: f"R$ {x:,.2f}")
         st.dataframe(df2, use_container_width=True, hide_index=True)
         th = sum(d.worked_hours for d in daily)
-        tr = sum(d.revenue for d in daily)
+        tr = sum(d.revenue      for d in daily)
         st.metric("Total horas",   f"{float(th):.2f}h")
         st.metric("Total receita", f"R$ {float(tr):,.2f}")

@@ -1,11 +1,10 @@
 """
 models.py — Mapeamento ORM completo do Work Track.
-Arquitetura: Company → Contract → ContractRateHistory
-             WorkLog e Invoice referenciam Contract (+ Company por conveniência)
 """
 import enum
 from datetime import datetime, date, time
 from decimal import Decimal
+from typing import Optional
 
 from sqlalchemy import (
     Boolean, Date, DateTime, Enum, ForeignKey,
@@ -13,7 +12,6 @@ from sqlalchemy import (
     UniqueConstraint, func,
 )
 from sqlalchemy.orm import Mapped, mapped_column, relationship
-
 from database.connection import Base
 
 
@@ -23,9 +21,6 @@ class ContractType(str, enum.Enum):
     PROJECT_HOURS = "PROJECT_HOURS"
 
 
-# ---------------------------------------------------------------------------
-# Company — dados cadastrais da empresa (sem contrato)
-# ---------------------------------------------------------------------------
 class Company(Base):
     __tablename__ = "companies"
 
@@ -43,9 +38,6 @@ class Company(Base):
         return f"<Company id={self.id} name={self.name!r}>"
 
 
-# ---------------------------------------------------------------------------
-# Contract — vínculo contratual entre empresa e prestador
-# ---------------------------------------------------------------------------
 class Contract(Base):
     __tablename__ = "contracts"
 
@@ -60,9 +52,15 @@ class Contract(Base):
         default=ContractType.WORK_HOUR,
     )
     start_date: Mapped[date]       = mapped_column(Date, nullable=False)
-    end_date: Mapped[date | None]  = mapped_column(Date, nullable=True)   # None = vigente
+    end_date: Mapped[date | None]  = mapped_column(Date, nullable=True)
     description: Mapped[str | None] = mapped_column(String(255), nullable=True)
-    created_at: Mapped[datetime]   = mapped_column(DateTime, nullable=False, server_default=func.now())
+
+    # Campos PROJECT_HOURS
+    monthly_fee: Mapped[Optional[Decimal]]      = mapped_column(Numeric(12, 2), nullable=True)
+    contracted_hours: Mapped[Optional[Decimal]] = mapped_column(Numeric(6, 2), nullable=True)
+    overage_rate: Mapped[Optional[Decimal]]     = mapped_column(Numeric(10, 2), nullable=True)
+
+    created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, server_default=func.now())
 
     company: Mapped["Company"] = relationship("Company", back_populates="contracts")
     rate_history: Mapped[list["ContractRateHistory"]] = relationship(
@@ -92,9 +90,6 @@ class Contract(Base):
         return f"<Contract id={self.id} company_id={self.company_id} type={self.contract_type}>"
 
 
-# ---------------------------------------------------------------------------
-# ContractRateHistory — histórico de taxas por contrato
-# ---------------------------------------------------------------------------
 class ContractRateHistory(Base):
     __tablename__ = "contract_rates_history"
 
@@ -112,9 +107,6 @@ class ContractRateHistory(Base):
         return f"<ContractRateHistory contract_id={self.contract_id} rate={self.hour_rate}>"
 
 
-# ---------------------------------------------------------------------------
-# Project
-# ---------------------------------------------------------------------------
 class Project(Base):
     __tablename__ = "projects"
 
@@ -133,9 +125,6 @@ class Project(Base):
         return f"<Project id={self.id} name={self.name!r}>"
 
 
-# ---------------------------------------------------------------------------
-# WorkLog
-# ---------------------------------------------------------------------------
 class WorkLog(Base):
     __tablename__ = "work_logs"
 
@@ -147,16 +136,12 @@ class WorkLog(Base):
         Integer, ForeignKey("projects.id", ondelete="SET NULL"), nullable=True
     )
     date: Mapped[date]             = mapped_column(Date, nullable=False)
-    # WORK_HOUR
     start_time: Mapped[time | None]  = mapped_column(Time, nullable=True)
     end_time: Mapped[time | None]    = mapped_column(Time, nullable=True)
     break_minutes: Mapped[int]       = mapped_column(Integer, nullable=False, default=0)
-    extra_partner_hours: Mapped[Decimal] = mapped_column(Numeric(5, 2), nullable=False, default=Decimal("0.00"))
-    # PROJECT_HOURS
+    extra_partner_minutes: Mapped[int] = mapped_column(Integer, default=0)
     total_hours: Mapped[Decimal | None]  = mapped_column(Numeric(6, 2), nullable=True)
-    # PROJECT
     progress_pct: Mapped[int | None]     = mapped_column(Integer, nullable=True)
-
     description: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime]    = mapped_column(DateTime, nullable=False, server_default=func.now())
 
@@ -167,9 +152,6 @@ class WorkLog(Base):
         return f"<WorkLog id={self.id} date={self.date}>"
 
 
-# ---------------------------------------------------------------------------
-# Invoice
-# ---------------------------------------------------------------------------
 class Invoice(Base):
     __tablename__ = "invoices"
 
@@ -194,9 +176,6 @@ class Invoice(Base):
         return f"<Invoice id={self.id} number={self.invoice_number!r}>"
 
 
-# ---------------------------------------------------------------------------
-# Holiday
-# ---------------------------------------------------------------------------
 class Holiday(Base):
     __tablename__ = "holidays"
 

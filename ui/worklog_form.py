@@ -31,11 +31,13 @@ def render_worklog_form() -> None:
 
     session = SessionLocal()
     try:
-        tab_form, tab_hist = st.tabs(["➕ Novo Apontamento", "📋 Histórico"])
-        with tab_form:
-            _render_form(session)
+        tab_hist, tab_form  = st.tabs(["📋 Histórico", "➕ Adicionar"])        
         with tab_hist:
             _render_history(session)
+            
+        with tab_form:
+            _render_form(session)
+            
     finally:
         session.close()
 
@@ -65,10 +67,30 @@ def _render_form(session) -> None:
 
     with st.container(border=True):
         ci1, ci2, ci3, ci4 = st.columns(4)
-        ci1.metric("Empresa", contract.company.name if contract and contract.company else "—")
-        ci2.metric("Tipo", CONTRACT_LABELS.get(contract_type.value, contract_type.value))
-        ci3.metric("Nº Contrato", contract.contract_number or "—")
-        ci4.metric("Taxa/h", f"R$ {float(rate_obj.hour_rate):,.2f}" if rate_obj else "⚠️ Sem taxa")
+        # ci1.metric("Empresa", contract.company.name if contract and contract.company else "—")
+        # ci2.metric("Tipo", CONTRACT_LABELS.get(contract_type.value, contract_type.value))
+        # ci3.metric("Nº Contrato", contract.contract_number or "—")
+        # ci4.metric("Taxa/h", f"R$ {float(rate_obj.hour_rate):,.2f}" if rate_obj else "⚠️ Sem taxa")
+        
+        def field(label, value):
+                st.markdown(f"""
+                    <div style="line-height:2.1">
+                        <div style="font-size:14px; text-align: center; color:gray; padding: 0;">{label}</div>
+                        <div style="font-size:18px; text-align: center; padding: 0 0 5px 0; ">{value}</div>
+                    </div>
+                """, unsafe_allow_html=True)
+        
+        with ci1:
+            field("Empresa", contract.company.fantasy_name or "—")
+            
+        with ci2:
+            field("Tipo de Contrato", CONTRACT_LABELS.get(contract_type.value, contract_type.value))
+            
+        with ci3:
+            field("Nº Contrato", contract.contract_number or "—")
+            
+        with ci4:
+            field("Taxa/h", f"R$ {float(rate_obj.hour_rate):,.2f}" if rate_obj else "⚠️ Sem taxa")
 
     projects = ProjectRepository.get_all_by_contract(session, contract_id)
     project_options = {"— Nenhum —": None}
@@ -110,7 +132,7 @@ def _render_form(session) -> None:
                     start_time=start_time,
                     end_time=end_time,
                     break_minutes=break_minutes or 0,
-                    extra_partner_hours=Decimal(str(extra_hours or 0)),
+                    extra_partner_minutes=int(extra_hours or 0),
                     total_hours=Decimal(str(total_hours)) if total_hours is not None else None,
                     progress_pct=progress_pct,
                     description=description.strip() if description else None,
@@ -127,10 +149,10 @@ def _render_form(session) -> None:
 def _fields_work_hour():
     st.caption("⏰ **Por Hora** — informe o horário trabalhado")
     c1, c2, c3, c4 = st.columns(4)
-    with c1: start_time = st.time_input("Início *", value=time(8, 0), step=1800, key="wl_start")
-    with c2: end_time   = st.time_input("Término *", value=time(17, 0), step=1800, key="wl_end")
+    with c1: start_time = st.time_input("Início *", value=time(9, 0), step=1800, key="wl_start")
+    with c2: end_time   = st.time_input("Término *", value=time(18, 0), step=1800, key="wl_end")
     with c3: break_min  = st.number_input("Intervalo (min)", 0, 480, 60, 15, key="wl_break")
-    with c4: extra      = st.number_input("Horas Extra Parceiro", 0.0, 24.0, 0.0, 0.5, format="%.2f", key="wl_extra")
+    with c4: extra = st.number_input("Extra Parceiro (min)", min_value=0, max_value=480,  value=0, step=5, key="wl_extra", help="Minutos extras do parceiro. Ex: 45, 90, 120...")
     return start_time, end_time, break_min, extra, None, None
 
 
@@ -212,6 +234,9 @@ def _render_history(session) -> None:
         return
 
     rows = []
+    total_receita = 0.0
+    total_horas   = 0.0
+    
     for wl in logs:
         ct = wl.contract.contract_type if wl.contract else ContractType.WORK_HOUR
         if ct == ContractType.WORK_HOUR and wl.start_time and wl.end_time:
@@ -236,6 +261,22 @@ def _render_history(session) -> None:
             "Receita": f"R$ {rev:,.2f}" if rev > 0 else "—",
             "Descrição": (wl.description or "")[:60],
         })
+
+        total_horas   += float(h) if h else 0
+        total_receita += rev
+        
+        # ── Big numbers no canto superior direito ──────────────────────────
+    c1, c2 = st.columns([2, 1])
+    with c2:
+        st.markdown(
+            f"""
+            <div style="text-align:right; padding-bottom: 4px;">                
+                <div style="font-size:16px; color:#888; font-weight:400;">Total do período: R$ {total_receita:,.2f}</div>
+                <div style="font-size:14px; color:#888; margin-top:2px;">Horas trabalhadas: {total_horas:.2f}h </div>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
 
     st.dataframe(pd.DataFrame(rows), use_container_width=True, hide_index=True)
     st.caption(f"{len(logs)} apontamento(s).")

@@ -12,11 +12,11 @@ def calc_worked_hours(
     start: time,
     end: time,
     break_minutes: int,
-    extra_partner_hours: float | Decimal,
+    extra_partner_minutes: int,
 ) -> Decimal:
     """
     Calcula horas trabalhadas:
-        (end - start) - break_minutes + extra_partner_hours
+        (end - start) - break_minutes + extra_partner_minutes
     Lança ValueError se resultado negativo ou horários incoerentes.
     """
     start_minutes = start.hour * 60 + start.minute
@@ -25,14 +25,13 @@ def calc_worked_hours(
     if end_minutes <= start_minutes:
         raise ValueError("end_time deve ser posterior a start_time.")
 
-    net_minutes = end_minutes - start_minutes - break_minutes
+    net_minutes = end_minutes - start_minutes - break_minutes + extra_partner_minutes
     net_hours = Decimal(str(net_minutes)) / Decimal("60")
-    net_hours += Decimal(str(extra_partner_hours))
+    # net_hours += Decimal(str(extra_partner_minutes))
 
     if net_hours < 0:
         raise ValueError(
-            f"Total de horas calculado é negativo ({net_hours:.2f}h). "
-            "Verifique break_minutes e extra_partner_hours."
+            f"Total de horas calculado é negativo ({net_hours:.2f}h)."            
         )
 
     return net_hours.quantize(Decimal("0.0001"))
