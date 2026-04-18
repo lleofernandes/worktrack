@@ -148,10 +148,11 @@ def get_monthly_metrics(
         h = _extract_hours(wl)
         total_worked += h
 
-        # Receita por linha só faz sentido para WORK_HOUR (taxa × hora)
+        # Receita por linha para WORK_HOUR (taxa × hora)
         # Para PROJECT_HOURS calculamos depois do total
         if contract_type == ContractType.WORK_HOUR:
             r = ContractRateRepository.get_active_rate(session, contract_id, wl.date)
+            # r = ContractRateRepository.get_active_rate(session, contract_id, last_day)
             total_actual_r += calc_actual_revenue(h, r.hour_rate if r else Decimal("0"))
 
     metrics.worked_hours = total_worked.quantize(Decimal("0.0001"))
@@ -230,7 +231,7 @@ def get_daily_revenue(session, contract_id: int, year: int, month: int) -> list[
 
     for wl in worklogs:
         h = _extract_hours(wl)
-
+        
         if contract_type == ContractType.WORK_HOUR:
             r = ContractRateRepository.get_active_rate(session, contract_id, wl.date)
             rev = calc_actual_revenue(h, r.hour_rate if r else Decimal("0"))

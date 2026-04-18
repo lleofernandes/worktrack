@@ -34,26 +34,58 @@ from components.dash_linechart import _render_monthly_evolution
 def _render_hours_by_contract_from_metrics(metrics_list) -> None:
     st.subheader("📊 Horas por Contrato")
 
-    totals: dict[str, dict] = defaultdict(lambda: {"Horas": 0.0, "Receita (R$)": 0.0})
+    totals: dict[str, dict] = defaultdict(lambda: {"Horas": 0.0, "Receita": 0.0})
 
     for m in metrics_list:
         if float(m.worked_hours) > 0:
-            totals[m.company_name]["Horas"]        += float(m.worked_hours)
-            totals[m.company_name]["Receita (R$)"] += float(m.actual_revenue)
+            totals[m.company_name]["Horas"]   += float(m.worked_hours)
+            totals[m.company_name]["Receita"] += float(m.actual_revenue)
 
     if not totals:
         st.info("Sem dados no período.")
         return
 
     df = (
-        pd.DataFrame([{"Contrato": k, **v} for k, v in totals.items()]).sort_values("Horas", ascending=False)
+        pd.DataFrame([{"Contrato": k, **v} for k, v in totals.items()])
+        .sort_values("Horas", ascending=False)
     )
+
+    colors = [
+        "#4f98a3", "#e8af34", "#6daa45",
+        "#a86fdf", "#dd6974", "#fdab43",
+    ]
+    bar_colors = [colors[i % len(colors)] for i in range(len(df))]
+
+    def _make_bar(col, prefix, fmt):
+        fig = go.Figure(go.Bar(
+            x=df["Contrato"],
+            y=df[col],
+            marker_color=bar_colors,
+            text=[f"{prefix}{v:{fmt}}" for v in df[col]],
+            textposition="outside",
+            textfont=dict(size=11),
+            hovertemplate=f"%{{x}}<br>{col}: {prefix}%{{y:{fmt}}}<extra></extra>",
+        ))
+        fig.update_layout(
+            xaxis=dict(gridcolor="rgba(255,255,255,0.08)"),
+            yaxis=dict(
+                gridcolor="rgba(255,255,255,0.08)",
+                tickprefix=prefix,
+                tickformat=fmt,
+            ),
+            plot_bgcolor="rgba(0,0,0,0)",
+            paper_bgcolor="rgba(0,0,0,0)",
+            font=dict(color="#cdccca"),
+            margin=dict(t=40, b=40, l=10, r=10),
+            showlegend=False,
+        )
+        return fig
 
     t1, t2 = st.tabs(["Receita", "Horas"])
     with t1:
-        st.bar_chart(df.set_index("Contrato")["Receita (R$)"])
+        st.plotly_chart(_make_bar("Receita", "R$ ", ",.0f"), width="stretch")
     with t2:
-        st.bar_chart(df.set_index("Contrato")["Horas"])
+        st.plotly_chart(_make_bar("Horas", "", ".1f"), width="stretch")
         
         
 

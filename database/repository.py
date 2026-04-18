@@ -7,7 +7,7 @@ from datetime import date
 from decimal import Decimal
 from typing import Optional
 
-from sqlalchemy import extract
+from sqlalchemy import extract, or_
 from sqlalchemy.orm import Session, joinedload
 
 from database.models import (
@@ -103,15 +103,16 @@ class ContractRepository:
 class ContractRateRepository:
 
     @staticmethod
-    def get_active_rate(session: Session, contract_id: int,
-                         ref_date: date) -> Optional[ContractRateHistory]:
+    def get_active_rate(session: Session, contract_id: int, ref_date: date) -> Optional[ContractRateHistory]:
         return (
             session.query(ContractRateHistory)
             .filter(
                 ContractRateHistory.contract_id == contract_id,
                 ContractRateHistory.start_date <= ref_date,
-                (ContractRateHistory.end_date == None) |  # noqa
-                (ContractRateHistory.end_date >= ref_date),
+                or_(
+                    ContractRateHistory.end_date.is_(None),
+                    ContractRateHistory.end_date >= ref_date,
+                )
             )
             .order_by(ContractRateHistory.start_date.desc())
             .first()

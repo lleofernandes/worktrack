@@ -3,7 +3,6 @@ dashboard.py — Dashboard analítico (por contrato).
 """
 from __future__ import annotations
 
-from collections import defaultdict
 from datetime import date
 from decimal import Decimal
 
@@ -25,8 +24,10 @@ from services.analytics_service import (
 from utils.calculations import calc_productivity
 from utils.toast_helper import show_pending_toast
 
-from components.dash_linechart import _render_monthly_evolution
+from components.dash_linechart import _render_monthly_evolution, render_annual_revenue_linechart
 from components.dash_barchart import _render_hours_by_contract_from_metrics, _render_daily_detail
+from components.dash_sidebachart import render_annual_charts
+
 
 
 _STATUS_MAP = {"Todos": None, "Ativo": True, "Inativo": False}
@@ -62,7 +63,8 @@ def render_dashboard() -> None:
                 filter_month = month_opts[month_sel]
 
             with fc3:
-                year_opts = ["Todos"] + list(range(date.today().year - 2, date.today().year + 1))
+                year_opts = ["Todos"] + list(range(date.today().year - 1, date.today().year + 1))
+                # year_opts = ["Todos"] + list(range(2021, date.today().year + 1))
                 year_sel  = st.selectbox("Ano", year_opts,
                                          index=year_opts.index(date.today().year),
                                          key="dash_year")
@@ -87,13 +89,12 @@ def render_dashboard() -> None:
 
         years_range  = _resolve_years(filter_year)
         months_range = _resolve_months(filter_month)
-
-        st.divider()
+                        
 
         for yr in years_range:
             _render_nf_alert(session, contracts, yr, filter_contract_id)
 
-        st.divider()
+        st.divider()        
         
         metrics_list = []
         for yr in years_range:
@@ -127,6 +128,19 @@ def render_dashboard() -> None:
         if filter_contract_id and filter_year and filter_month:
             st.divider()
             _render_daily_detail(session, filter_contract_id, filter_year, filter_month)
+            
+        st.divider()
+        
+        st.caption("📊 Visão Geral Anual")
+        
+        col_line_anual, col_sidebar = st.columns(2)
+        with col_line_anual:       
+            render_annual_revenue_linechart(session)
+            
+        with col_sidebar:
+            render_annual_charts(session)    
+            
+        
 
     finally:
         session.close()
