@@ -1,65 +1,48 @@
 """
-analytics_service.py — Camada analítica do Work Track.
-Queries delegadas ao WorkLogRepository / ContractRateRepository / HolidayRepository.
+analytics_service.py — Cálculos analíticos por contrato/mês.
 """
 from __future__ import annotations
 
-from dataclasses import dataclass
+from calendar import monthrange
+from dataclasses import dataclass, field
 from datetime import date
 from decimal import Decimal
 from typing import Optional
 
 from sqlalchemy.orm import Session
 
-from database.models import Company
 from database.repository import (
-    CompanyRepository,
-    ContractRateRepository,
-    WorkLogRepository,
-    HolidayRepository,
+    ContractRateRepository, HolidayRepository, WorkLogRepository,
 )
 from utils.calculations import (
-    calc_actual_revenue,
-    calc_expected_hours,
-    calc_expected_revenue,
-    calc_productivity,
-    calc_remaining_hours,
-    calc_revenue_diff,
-    calc_worked_hours,
+    calc_actual_revenue, calc_expected_hours, calc_expected_revenue,
+    calc_productivity, calc_remaining_hours, calc_worked_hours,
 )
-from utils.date_utils import count_business_days, get_business_days
 
-
-# ---------------------------------------------------------------------------
-# Data classes
-# ---------------------------------------------------------------------------
 
 @dataclass
 class MonthlyMetrics:
-    company_id: int
+    contract_id: int
     company_name: str
+    contract_label: str
     year: int
     month: int
+    business_days: int      = 0
+    worked_days: int        = 0
+    expected_hours: Decimal = field(default_factory=lambda: Decimal("0"))
+    worked_hours: Decimal   = field(default_factory=lambda: Decimal("0"))
+    productivity: Decimal   = field(default_factory=lambda: Decimal("0"))
+    remaining_hours: Decimal = field(default_factory=lambda: Decimal("0"))
+    expected_revenue: Decimal = field(default_factory=lambda: Decimal("0"))
+    actual_revenue: Decimal   = field(default_factory=lambda: Decimal("0"))
+    revenue_diff: Decimal     = field(default_factory=lambda: Decimal("0"))
 
-    business_days: int = 0
-    worked_days: int = 0
-    expected_hours: Decimal = Decimal("0")
-    worked_hours: Decimal = Decimal("0")
-    productivity: Decimal = Decimal("0")
-    remaining_hours: Decimal = Decimal("0")
 
-    hour_rate: Decimal = Decimal("0")
-    expected_revenue: Decimal = Decimal("0")
-    actual_revenue: Decimal = Decimal("0")
-    revenue_diff: Decimal = Decimal("0")
-
-    @property
-    def is_on_track(self) -> bool:
-        return self.productivity >= Decimal("100")
-
-    @property
-    def productivity_color(self) -> str:
-        return "green" if self.is_on_track else "red"
+@dataclass
+class CompanyBarData:
+    company_name: str
+    worked_hours: Decimal
+    actual_revenue: Decimal
 
 
 @dataclass
@@ -70,149 +53,131 @@ class DailyRevenue:
 
 
 @dataclass
-class CompanyMonthSummary:
-    company_name: str
+class MonthlyEvolution:
+    year: int
+    month: int
     worked_hours: Decimal
+    expected_hours: Decimal
     actual_revenue: Decimal
+    expected_revenue: Decimal
+    productivity: Decimal
 
 
-# ---------------------------------------------------------------------------
-# Funções principais
-# ---------------------------------------------------------------------------
-
-def get_monthly_metrics(
-    session: Session,
-    company_id: int,
-    year: int,
-    month: int,
-) -> MonthlyMetrics:
-    company = CompanyRepository.get_by_id(session, company_id)
-    metrics = MonthlyMetrics(
-        company_id=company_id,
-        company_name=company.name if company else f"Empresa #{company_id}",
-        year=year,
-        month=month,
-    )
-
-    # Dias úteis
-    metrics.business_days = count_business_days(year, month, session)
-    metrics.expected_hours = calc_expected_hours(metrics.business_days)
-
-    # Dias trabalhados (distinct dates cruzado com dias úteis)
-    business_day_set = set(get_business_days(year, month, session))
-    logged_dates = WorkLogRepository.get_distinct_dates(session, company_id, year, month)
-    metrics.worked_days = len(logged_dates & business_day_set)
-
-    # Worklogs do mês
-    worklogs = WorkLogRepository.list_by_company_month(session, company_id, year, month)
-
-    # Horas e receita realizada (rate por data de cada log)
-    total_worked = Decimal("0")
-    total_actual_revenue = Decimal("0")
-
-    for wl in worklogs:
+def _extract_hours(wl) -> Decimal:
+    if wl.total_hours is not None:
+        return Decimal(str(wl.total_hours))
+    if wl.start_time and wl.end_time:
         try:
-            hours = calc_worked_hours(
-                wl.start_time, wl.end_time,
-                wl.break_minutes, float(wl.extra_partner_hours),
-            )
+            return calc_worked_hours(wl.start_time, wl.end_time,
+                                      wl.break_minutes, float(wl.extra_partner_hours))
         except ValueError:
-            hours = Decimal("0")
+            pass
+    return Decimal("0")
 
-        rate_obj = ContractRateRepository.get_active_rate(session, company_id, wl.date)
-        rate = rate_obj.hour_rate if rate_obj else Decimal("0")
 
-        total_worked += hours
-        total_actual_revenue += calc_actual_revenue(hours, rate)
+def get_monthly_metrics(session: Session, contract_id: int,
+                         year: int, month: int) -> MonthlyMetrics:
+    from database.repository import ContractRepository
+    contract = ContractRepository.get_by_id(session, contract_id)
+    company_name   = contract.company.name if contract and contract.company else f"Contrato #{contract_id}"
+    contract_label = f"{contract.contract_number or 'S/N'}" if contract else "—"
 
-    metrics.worked_hours = total_worked.quantize(Decimal("0.0001"))
-    metrics.actual_revenue = total_actual_revenue.quantize(Decimal("0.01"))
-
-    # Taxa vigente para receita esperada
-    today = date.today()
-    ref_date = (
-        today if (year == today.year and month == today.month)
-        else date(year, month, 1)
+    metrics = MonthlyMetrics(
+        contract_id=contract_id,
+        company_name=company_name,
+        contract_label=contract_label,
+        year=year, month=month,
     )
-    rate_obj = ContractRateRepository.get_active_rate(session, company_id, ref_date)
-    metrics.hour_rate = rate_obj.hour_rate if rate_obj else Decimal("0")
 
-    # Métricas derivadas
-    metrics.expected_revenue = calc_expected_revenue(metrics.expected_hours, metrics.hour_rate)
-    metrics.productivity = calc_productivity(metrics.worked_hours, metrics.expected_hours)
+    first_day = date(year, month, 1)
+    last_day  = date(year, month, monthrange(year, month)[1])
+    holidays  = HolidayRepository.get_in_range(session, first_day, last_day)
+
+    biz_days = sum(
+        1 for d in range(1, monthrange(year, month)[1] + 1)
+        if date(year, month, d).weekday() < 5
+        and date(year, month, d) not in holidays
+    )
+    metrics.business_days = biz_days
+
+    rate_obj = ContractRateRepository.get_active_rate(session, contract_id, first_day)
+    rate     = rate_obj.hour_rate if rate_obj else Decimal("0")
+
+    metrics.expected_hours   = calc_expected_hours(biz_days)
+    metrics.expected_revenue = calc_expected_revenue(metrics.expected_hours, rate)
+
+    worklogs = WorkLogRepository.list_by_contract_month(session, contract_id, year, month)
+    metrics.worked_days = len({wl.date for wl in worklogs})
+
+    total_worked   = Decimal("0")
+    total_actual_r = Decimal("0")
+    for wl in worklogs:
+        h = _extract_hours(wl)
+        r = ContractRateRepository.get_active_rate(session, contract_id, wl.date)
+        total_worked   += h
+        total_actual_r += calc_actual_revenue(h, r.hour_rate if r else Decimal("0"))
+
+    metrics.worked_hours   = total_worked.quantize(Decimal("0.0001"))
+    metrics.actual_revenue = total_actual_r.quantize(Decimal("0.01"))
+    metrics.productivity   = calc_productivity(metrics.worked_hours, metrics.expected_hours)
     metrics.remaining_hours = calc_remaining_hours(metrics.worked_hours, metrics.expected_hours)
-    metrics.revenue_diff = calc_revenue_diff(metrics.actual_revenue, metrics.expected_revenue)
+    metrics.revenue_diff   = (metrics.actual_revenue - metrics.expected_revenue).quantize(Decimal("0.01"))
 
     return metrics
 
 
-def get_all_companies_metrics(
-    session: Session, year: int, month: int
-) -> list[MonthlyMetrics]:
-    companies = CompanyRepository.get_all(session)
-    return [get_monthly_metrics(session, c.id, year, month) for c in companies]
+def get_all_contracts_metrics(session: Session, year: int, month: int) -> list[MonthlyMetrics]:
+    from database.repository import ContractRepository
+    contracts = ContractRepository.get_all(session)
+    return [get_monthly_metrics(session, c.id, year, month) for c in contracts]
 
 
-def get_daily_revenue(
-    session: Session, company_id: int, year: int, month: int
-) -> list[DailyRevenue]:
-    worklogs = WorkLogRepository.list_by_company_month(session, company_id, year, month)
+def get_company_bar_data(session: Session, year: int, month: int) -> list[CompanyBarData]:
+    from database.repository import ContractRepository
+    contracts = ContractRepository.get_all(session)
+    result = []
+    for ct in contracts:
+        m = get_monthly_metrics(session, ct.id, year, month)
+        if m.worked_hours > 0:
+            label = ct.company.name if ct.company else f"Contrato #{ct.id}"
+            result.append(CompanyBarData(company_name=label,
+                                          worked_hours=m.worked_hours,
+                                          actual_revenue=m.actual_revenue))
+    return result
 
+
+def get_daily_revenue(session: Session, contract_id: int,
+                       year: int, month: int) -> list[DailyRevenue]:
+    worklogs = WorkLogRepository.list_by_contract_month(session, contract_id, year, month)
     daily: dict[date, tuple[Decimal, Decimal]] = {}
+
     for wl in worklogs:
-        try:
-            hours = calc_worked_hours(
-                wl.start_time, wl.end_time,
-                wl.break_minutes, float(wl.extra_partner_hours),
-            )
-        except ValueError:
-            hours = Decimal("0")
-
-        rate_obj = ContractRateRepository.get_active_rate(session, company_id, wl.date)
-        rate = rate_obj.hour_rate if rate_obj else Decimal("0")
-        revenue = calc_actual_revenue(hours, rate)
-
+        h = _extract_hours(wl)
+        r = ContractRateRepository.get_active_rate(session, contract_id, wl.date)
+        rev = calc_actual_revenue(h, r.hour_rate if r else Decimal("0"))
         if wl.date in daily:
             ph, pr = daily[wl.date]
-            daily[wl.date] = (ph + hours, pr + revenue)
+            daily[wl.date] = (ph + h, pr + rev)
         else:
-            daily[wl.date] = (hours, revenue)
+            daily[wl.date] = (h, rev)
 
-    return [
-        DailyRevenue(date=d, worked_hours=h, revenue=r)
-        for d, (h, r) in sorted(daily.items())
-    ]
+    return [DailyRevenue(date=d, worked_hours=h, revenue=r)
+            for d, (h, r) in sorted(daily.items())]
 
 
-def get_monthly_evolution(
-    session: Session, company_id: int, year: int, months: int = 12
-) -> list[MonthlyMetrics]:
-    today = date.today()
-    results = []
-
-    for i in range(months - 1, -1, -1):
-        m = today.month - i
-        y = today.year
-        while m <= 0:
-            m += 12
-            y -= 1
-        if y < year:
-            continue
-        results.append(get_monthly_metrics(session, company_id, y, m))
-
-    return results
-
-
-def get_company_bar_data(
-    session: Session, year: int, month: int
-) -> list[CompanyMonthSummary]:
-    metrics_list = get_all_companies_metrics(session, year, month)
-    return [
-        CompanyMonthSummary(
-            company_name=m.company_name,
-            worked_hours=m.worked_hours,
-            actual_revenue=m.actual_revenue,
-        )
-        for m in metrics_list
-        if m.worked_hours > 0
-    ]
+def get_monthly_evolution(session: Session, contract_id: int,
+                            year: int, months: int = 12) -> list[MonthlyEvolution]:
+    result = []
+    for m in range(1, min(months, 12) + 1):
+        if date(year, m, 1) > date.today():
+            break
+        mt = get_monthly_metrics(session, contract_id, year, m)
+        result.append(MonthlyEvolution(
+            year=year, month=m,
+            worked_hours=mt.worked_hours,
+            expected_hours=mt.expected_hours,
+            actual_revenue=mt.actual_revenue,
+            expected_revenue=mt.expected_revenue,
+            productivity=mt.productivity,
+        ))
+    return result
