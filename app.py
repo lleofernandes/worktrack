@@ -15,6 +15,26 @@ st.set_page_config(
 
 init_db()
 
-st.title("⏱️ Work Track")
-st.success("✅ Banco de dados inicializado com sucesso.")
-st.info("Etapa 1 concluída — models e conexão prontos.")
+with st.sidebar:
+    st.title("⏱️ Work Track")
+    st.caption("Controle de horas & faturamento")
+    st.divider()
+    page = st.radio(
+        "Menu",
+        options=["Controle de Horas", "Notas Fiscais", "Dashboard"],
+        index=0,
+    )
+    st.divider()
+    st.caption("v0.1.0 — Etapa 3")
+
+if page == "Controle de Horas":
+    from ui.worklog_form import render_worklog_form
+    render_worklog_form()
+
+elif page == "Notas Fiscais":
+    from ui.invoice_form import render_invoice_form
+    render_invoice_form()
+
+elif page == "Dashboard":
+    st.header("📊 Dashboard")
+    st.info("Em desenvolvimento — Etapa 5.")
