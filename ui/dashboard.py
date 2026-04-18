@@ -1,0 +1,3 @@
+"""
+dashboard.py — (Etapa futura)
+"""
