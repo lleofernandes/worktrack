@@ -46,47 +46,95 @@ def _get_invoice_data(session):
 
 
 # Line chart — evolução mensal
-def _render_monthly_evolution(session, contract_id: int, year: int) -> None:
-    ct    = session.get(Contract, contract_id)
-    st.subheader("📈 Evolução por Mês/Ano")
+def _render_monthly_evolution(session, contract_ids: list[int], years: list[int]) -> None:
+    st.subheader("📈 Evolução Mensal")
 
-    ev = get_monthly_evolution(session, contract_id, year)
-    if not ev:
+    agg: dict[tuple, dict] = defaultdict(lambda: {
+        "worked_hours": 0.0, "expected_hours": 0.0,
+        "actual_revenue": 0.0, "expected_revenue": 0.0,
+    })
+
+    for cid in contract_ids:
+        for yr in years:                              # ← itera ano por ano
+            ev = get_monthly_evolution(session, cid, yr)   # ← int, int
+            for e in ev:
+                key = (e.year, e.month)
+                agg[key]["worked_hours"]     += float(e.worked_hours)
+                agg[key]["expected_hours"]   += float(e.expected_hours)
+                agg[key]["actual_revenue"]   += float(e.actual_revenue)
+                agg[key]["expected_revenue"] += float(e.expected_revenue)
+
+    if not agg:
         st.info("Sem dados de evolução.")
         return
 
-    ev_sorted = sorted(ev, key=lambda e: (e.year, e.month))
+    rows = []
+    for (yr, mo), v in sorted(agg.items()):
+        prod = (v["worked_hours"] / v["expected_hours"] * 100) if v["expected_hours"] > 0 else 0.0
+        rows.append({
+            "Mês":               date(yr, mo, 1).strftime("%b/%Y"),
+            "Horas Trabalhadas": v["worked_hours"],
+            "Horas Esperadas":   v["expected_hours"],
+            "Receita Realizada": v["actual_revenue"],
+            "Receita Esperada":  v["expected_revenue"],
+            "Produtividade (%)": prod,
+        })
 
-    df = pd.DataFrame([{
-        "Mês":               date(e.year, e.month, 1).strftime("%b/%Y"),
-        "Horas Trabalhadas": float(e.worked_hours),
-        "Horas Esperadas":   float(e.expected_hours),
-        "Receita Realizada": float(e.actual_revenue),
-        "Receita Esperada":  float(e.expected_revenue),
-        "Produtividade (%)": float(e.productivity),
-    } for e in ev_sorted])
+    df       = pd.DataFrame(rows)
+    meses    = df["Mês"].tolist()
+    x_layout = {"categoryorder": "array", "categoryarray": meses}
+    base_layout = dict(
+        plot_bgcolor="rgba(0,0,0,0)",
+        paper_bgcolor="rgba(0,0,0,0)",
+        font=dict(color="#cdccca"),
+        margin=dict(t=40, b=40, l=10, r=10),
+        xaxis={**x_layout, "gridcolor": "rgba(255,255,255,0.08)"},
+        yaxis={"gridcolor": "rgba(255,255,255,0.08)"},
+    )
 
     t1, t2, t3 = st.tabs(["Receita", "Horas", "Produtividade"])
 
     with t1:
         fig = go.Figure()
-        fig.add_trace(go.Scatter(x=df["Mês"], y=df["Receita Realizada"], name="Receita Realizada", mode="lines+markers+text", text=df["Receita Realizada"], textposition="top center", texttemplate="%{y:,.0f}"))
-        fig.add_trace(go.Scatter(x=df["Mês"], y=df["Receita Esperada"],  name="Receita Esperada",  mode="lines+markers+text", text=df["Receita Esperada"],  textposition="bottom center", texttemplate="%{y:,.0f}"))
-        fig.update_layout(xaxis={"categoryorder": "array", "categoryarray": df["Mês"].tolist()})        
-        st.plotly_chart(fig, width='stretch')
+        fig.add_trace(go.Scatter(
+            x=df["Mês"], y=df["Receita Realizada"], name="Realizada",
+            mode="lines+markers+text", line=dict(color="#4f98a3"),
+            text=df["Receita Realizada"], textposition="top center",
+            texttemplate="R$ %{y:,.0f}",
+        ))
+        fig.add_trace(go.Scatter(
+            x=df["Mês"], y=df["Receita Esperada"], name="Esperada",
+            mode="lines+markers+text", line=dict(color="#e8af34", dash="dot"),
+            text=df["Receita Esperada"], textposition="bottom center",
+            texttemplate="R$ %{y:,.0f}",
+        ))
+        fig.update_layout(**base_layout)
+        st.plotly_chart(fig, width="stretch")
 
     with t2:
         fig = go.Figure()
-        fig.add_trace(go.Scatter(x=df["Mês"], y=df["Horas Trabalhadas"], name="Horas Trabalhadas", mode="lines+markers"))
-        fig.add_trace(go.Scatter(x=df["Mês"], y=df["Horas Esperadas"],   name="Horas Esperadas",   mode="lines+markers"))
-        fig.update_layout(xaxis={"categoryorder": "array", "categoryarray": df["Mês"].tolist()})
-        st.plotly_chart(fig, width='stretch')
+        fig.add_trace(go.Scatter(
+            x=df["Mês"], y=df["Horas Trabalhadas"], name="Trabalhadas",
+            mode="lines+markers", line=dict(color="#4f98a3"),
+        ))
+        fig.add_trace(go.Scatter(
+            x=df["Mês"], y=df["Horas Esperadas"], name="Esperadas",
+            mode="lines+markers", line=dict(color="#e8af34", dash="dot"),
+        ))
+        fig.update_layout(**base_layout)
+        st.plotly_chart(fig, width="stretch")
 
     with t3:
         fig = go.Figure()
-        fig.add_trace(go.Scatter(x=df["Mês"], y=df["Produtividade (%)"], name="Produtividade (%)", mode="lines+markers"))
-        fig.update_layout(xaxis={"categoryorder": "array", "categoryarray": df["Mês"].tolist()})
-        st.plotly_chart(fig, width='stretch')
+        fig.add_trace(go.Scatter(
+            x=df["Mês"], y=df["Produtividade (%)"], name="Produtividade",
+            mode="lines+markers", line=dict(color="#6daa45"),
+            fill="tozeroy", fillcolor="rgba(109,170,69,0.1)",
+        ))
+        fig.add_hline(y=100, line_dash="dot", line_color="#dd6974",
+                      annotation_text="Meta 100%", annotation_position="top right")
+        fig.update_layout(**base_layout)
+        st.plotly_chart(fig, width="stretch")
         st.caption("🔴 < 100% abaixo da meta | 🟢 ≥ 100% acima da meta")
         
 

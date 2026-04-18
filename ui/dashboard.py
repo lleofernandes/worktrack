@@ -119,11 +119,11 @@ def render_dashboard() -> None:
         with col_bar:
             # Reutiliza metrics_list
             _render_hours_by_contract_from_metrics(metrics_list)
+            
         with col_line:
-            target_id = filter_contract_id or (contracts[0].id if contracts else None)
-            if target_id:
-                evo_year = filter_year or date.today().year
-                _render_monthly_evolution(session, target_id, evo_year)
+            # Monta lista de ids com base no filtro
+            all_ids = [filter_contract_id] if filter_contract_id else [ct.id for ct in contracts]
+            _render_monthly_evolution(session, all_ids, years_range)
 
         if filter_contract_id and filter_year and filter_month:
             st.divider()
