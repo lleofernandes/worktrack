@@ -9,6 +9,7 @@ from decimal import Decimal
 
 import pandas as pd
 import streamlit as st
+import plotly.graph_objects as go
 
 from database.connection import SessionLocal
 from database.models import Contract
@@ -18,13 +19,14 @@ from database.repository import (
     WorkLogRepository,
 )
 from services.analytics_service import (
-    get_all_contracts_metrics,
-    get_daily_revenue,
-    get_monthly_evolution,
+    get_all_contracts_metrics,    
     get_monthly_metrics,
 )
 from utils.calculations import calc_productivity
 from utils.toast_helper import show_pending_toast
+
+from components.dash_linechart import _render_monthly_evolution
+from components.dash_barchart import _render_hours_by_contract_from_metrics, _render_daily_detail
 
 
 _STATUS_MAP = {"Todos": None, "Ativo": True, "Inativo": False}
@@ -40,7 +42,10 @@ def render_dashboard() -> None:
             fc1, fc2, fc3, fc4 = st.columns(4)
 
             with fc1:
-                status_sel    = st.selectbox("Status Contrato", list(_STATUS_MAP.keys()), key="dash_status")
+                _status_keys = list(_STATUS_MAP.keys())                
+                status_sel    = st.selectbox("Status Contrato", _status_keys, 
+                                            index=_status_keys.index("Ativo"), 
+                                            key="dash_status")
                 filter_active = _STATUS_MAP[status_sel]
 
             with fc2:
@@ -87,9 +92,9 @@ def render_dashboard() -> None:
 
         for yr in years_range:
             _render_nf_alert(session, contracts, yr, filter_contract_id)
-        st.divider()
 
-        # ── Coleta métricas UMA ÚNICA VEZ com active_only correto ────────
+        st.divider()
+        
         metrics_list = []
         for yr in years_range:
             for mo in months_range:
@@ -111,7 +116,7 @@ def render_dashboard() -> None:
 
         col_bar, col_line = st.columns(2)
         with col_bar:
-            # Reutiliza metrics_list — sem nova chamada ao service/banco
+            # Reutiliza metrics_list
             _render_hours_by_contract_from_metrics(metrics_list)
         with col_line:
             target_id = filter_contract_id or (contracts[0].id if contracts else None)
@@ -157,6 +162,8 @@ def _period_label(filter_year, filter_month) -> str:
 # ---------------------------------------------------------------------------
 
 def _render_nf_alert(session, contracts, year: int, filter_contract_id) -> None:
+    # ── Respeita o filtro de status da tela ──
+    # contracts já vem filtrado (Ativo/Inativo/Todos) — não busca tudo novamente
     target = (
         [c for c in contracts if c.id == filter_contract_id]
         if filter_contract_id else contracts
@@ -209,135 +216,37 @@ def _render_kpi_cards(metrics_list) -> None:
     total_remain   = sum(m.remaining_hours  for m in metrics_list)
     rev_diff       = total_actual - total_exp_rev
     prod           = float(calc_productivity(total_worked, total_expected))
-    biz_days       = sum(m.business_days for m in metrics_list)
-    worked_days    = sum(m.worked_days   for m in metrics_list)
+    
+    seen_periods: dict[tuple, int] = {}
+    seen_worked:  dict[tuple, int] = {}
+    
+    for m in metrics_list:
+        key = (m.year, m.month)
+        seen_periods[key] = m.business_days
+        seen_worked[key]  = max(seen_worked.get(key, 0), m.worked_days)
 
-    st.subheader("⏱️ Horas")
-    c1, c2, c3, c4, c5 = st.columns(5)
+    biz_days    = sum(seen_periods.values())
+    worked_days = sum(seen_worked.values())
+
+    st.subheader("⏱️ Resultado consolidado")
+    
+    c1, c2, c3, c4 = st.columns(4)
     c1.metric("Dias Úteis",        f"{biz_days}")
     c2.metric("Dias Trabalhados",  f"{worked_days}")
     c3.metric("Horas Esperadas",   f"{float(total_expected):.1f}h")
     c4.metric("Horas Trabalhadas", f"{float(total_worked):.1f}h",
               delta=f"{float(total_worked - total_expected):.1f}h")
-    c5.metric("Horas Restantes",   f"{float(total_remain):.1f}h")
 
     st.divider()
     st.subheader("💰 Receita & Produtividade")
-    r1, r2, r3, r4 = st.columns(4)
+    r1, r2, r3 = st.columns(3)
     r1.metric("Receita Esperada",  f"R$ {float(total_exp_rev):,.2f}")
     r2.metric("Receita Realizada", f"R$ {float(total_actual):,.2f}",
               delta=f"R$ {float(rev_diff):,.2f}",
-              delta_color="normal" if rev_diff >= 0 else "inverse")
-    r3.metric("Diferença",         f"R$ {float(rev_diff):,.2f}",
-              delta_color="normal" if rev_diff >= 0 else "inverse")
-    r4.metric("Produtividade",     f"{prod:.1f}%",
+              delta_color="normal" if rev_diff >= 0 else "inverse")    
+    r3.metric("Produtividade",     f"{prod:.1f}%",
               delta=f"{prod - 100:.1f}%")
 
     icon = "🟢" if prod >= 100 else "🔴"
     st.caption(f"{icon} Produtividade consolidada: {prod:.1f}%")
     st.progress(min(prod / 100, 1.0))
-
-
-# ---------------------------------------------------------------------------
-# Bar chart — reutiliza metrics_list, zero chamadas extras ao banco
-# ---------------------------------------------------------------------------
-
-def _render_hours_by_contract_from_metrics(metrics_list) -> None:
-    st.subheader("📊 Horas por Contrato")
-
-    totals: dict[str, dict] = defaultdict(lambda: {"Horas": 0.0, "Receita (R$)": 0.0})
-
-    for m in metrics_list:
-        if float(m.worked_hours) > 0:
-            totals[m.company_name]["Horas"]        += float(m.worked_hours)
-            totals[m.company_name]["Receita (R$)"] += float(m.actual_revenue)
-
-    if not totals:
-        st.info("Sem dados no período.")
-        return
-
-    df = (
-        pd.DataFrame([{"Contrato": k, **v} for k, v in totals.items()]).sort_values("Horas", ascending=False)
-    )
-
-    t1, t2 = st.tabs(["Receita", "Horas"])
-    with t1:
-        st.bar_chart(df.set_index("Contrato")["Receita (R$)"])
-    with t2:
-        st.bar_chart(df.set_index("Contrato")["Horas"])
-        
-
-
-# ---------------------------------------------------------------------------
-# Line chart — evolução mensal
-# ---------------------------------------------------------------------------
-
-def _render_monthly_evolution(session, contract_id: int, year: int) -> None:
-    ct    = session.get(Contract, contract_id)
-    label = (
-        f"{ct.company.name if ct and ct.company else '?'} — {ct.contract_number or 'S/N'}"
-        if ct else f"#{contract_id}"
-    )
-    st.subheader(f"📈 Evolução por Mês/Ano") # — {label}")
-
-    ev = get_monthly_evolution(session, contract_id, year)
-    if not ev:
-        st.info("Sem dados de evolução.")
-        return
-
-    df = pd.DataFrame([{
-        "Mês":               date(e.year, e.month, 1).strftime("%b/%Y"),
-        "Horas Trabalhadas": float(e.worked_hours),
-        "Horas Esperadas":   float(e.expected_hours),
-        "Receita Realizada": float(e.actual_revenue),
-        "Receita Esperada":  float(e.expected_revenue),
-        "Produtividade (%)": float(e.productivity),
-    } for e in ev])
-
-    t1, t2, t3 = st.tabs(["Horas", "Receita", "Produtividade"])
-    with t1:
-        st.line_chart(df.set_index("Mês")[["Horas Trabalhadas", "Horas Esperadas"]])
-    with t2:
-        st.line_chart(df.set_index("Mês")[["Receita Realizada", "Receita Esperada"]])
-    with t3:
-        st.line_chart(df.set_index("Mês")["Produtividade (%)"])
-        st.caption("🔴 < 100% abaixo da meta | 🟢 ≥ 100% acima da meta")
-
-
-# ---------------------------------------------------------------------------
-# Detalhe diário
-# ---------------------------------------------------------------------------
-
-def _render_daily_detail(session, contract_id: int, year: int, month: int) -> None:
-    ct    = session.get(Contract, contract_id)
-    label = f"{ct.company.name if ct and ct.company else '?'}" if ct else f"#{contract_id}"
-    st.subheader(
-        f"📅 Detalhe Diário — {label} ({date(year, month, 1).strftime('%B/%Y').capitalize()})"
-    )
-
-    daily = get_daily_revenue(session, contract_id, year, month)
-    if not daily:
-        st.info("Sem apontamentos no período.")
-        return
-
-    df = pd.DataFrame([{
-        "Data":         d.date.strftime("%d/%m/%Y"),
-        "Horas":        float(d.worked_hours),
-        "Receita (R$)": float(d.revenue),
-    } for d in daily])
-
-    c1, c2 = st.columns(2)
-    with c1:
-        st.bar_chart(df.set_index("Data")["Horas"])
-    with c2:
-        st.bar_chart(df.set_index("Data")["Receita (R$)"])
-
-    with st.expander("Ver tabela"):
-        df2 = df.copy()
-        df2["Horas"]        = df2["Horas"].apply(lambda x: f"{x:.2f}h")
-        df2["Receita (R$)"] = df2["Receita (R$)"].apply(lambda x: f"R$ {x:,.2f}")
-        st.dataframe(df2, use_container_width=True, hide_index=True)
-        th = sum(d.worked_hours for d in daily)
-        tr = sum(d.revenue      for d in daily)
-        st.metric("Total horas",   f"{float(th):.2f}h")
-        st.metric("Total receita", f"R$ {float(tr):,.2f}")

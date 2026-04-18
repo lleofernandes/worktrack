@@ -261,9 +261,10 @@ class InvoiceRepository:
     @staticmethod
     def get_months_with_invoices(session: Session, contract_id: int, year: int) -> set[int]:
         rows = (session.query(extract("month", Invoice.issue_date).label("m"))
-                .filter(Invoice.contract_id == contract_id,
-                        extract("year", Invoice.issue_date) == year)
-                .distinct().all())
+                .filter(Invoice.contract_id == contract_id, 
+                        extract("year", Invoice.issue_date) == year, 
+                        Invoice.amount > 0,
+                ).distinct().all())
         return {int(r.m) for r in rows}
 
     @staticmethod
