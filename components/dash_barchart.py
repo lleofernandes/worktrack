@@ -92,7 +92,7 @@ def _render_daily_detail(session, contract_id: int, year: int, month: int) -> No
         df2 = df.copy()
         df2["Horas"]        = df2["Horas"].apply(lambda x: f"{x:.2f}h")
         df2["Receita (R$)"] = df2["Receita (R$)"].apply(lambda x: f"R$ {x:,.2f}")
-        st.dataframe(df2, use_container_width=True, hide_index=True)
+        st.dataframe(df2, width='stretch', hide_index=True)
         th = sum(d.worked_hours for d in daily)
         tr = sum(d.revenue      for d in daily)
         st.metric("Total horas",   f"{float(th):.2f}h")

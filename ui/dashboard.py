@@ -193,11 +193,11 @@ def _render_nf_alert(session, contracts, year: int, filter_contract_id) -> None:
 
     if pendentes:
         st.warning(f"⚠️ **{len(pendentes)} NF(s) pendente(s) — {year}**")
-        st.dataframe(pd.DataFrame(pendentes), use_container_width=True, hide_index=True)
+        st.dataframe(pd.DataFrame(pendentes), width='stretch', hide_index=True)
 
     if em_andamento:
         with st.expander(f"🔄 {len(em_andamento)} mês(es) em andamento em {year} (NF ainda não emitida — normal)"):
-            st.dataframe(pd.DataFrame(em_andamento), use_container_width=True, hide_index=True)
+            st.dataframe(pd.DataFrame(em_andamento), width='stretch', hide_index=True)
 
 
 # ---------------------------------------------------------------------------

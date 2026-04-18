@@ -96,7 +96,7 @@ def _render_new(session) -> None:
             origin = st.text_input("Origem / Referência", placeholder="Ex: Competência Mar/2025")
 
         notes = st.text_input("Observações", max_chars=255, value="Serviços prestados de Analista de Dados")
-        submitted = st.form_submit_button("💾 Salvar NF", type="primary", use_container_width=True)
+        submitted = st.form_submit_button("💾 Salvar NF", type="primary", width='stretch')
 
     if submitted:
         if not invoice_number.strip():
@@ -200,7 +200,7 @@ def _render_history(session) -> None:
         )
         # st.metric("Total faturado no período", f"R$ {total:,.2f}")            
         
-    st.dataframe(pd.DataFrame(rows), use_container_width=True, hide_index=True)
+    st.dataframe(pd.DataFrame(rows), width='stretch', hide_index=True)
     
     
 

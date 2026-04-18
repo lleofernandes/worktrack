@@ -23,17 +23,7 @@ sys.path.insert(0, os.path.dirname(__file__))
 with st.sidebar:
     st.title("⏱️ Work Track")
     st.caption("Controle de Horas & Faturamento")
-    st.divider()
-    # page = st.radio(
-    #     "Menu",
-    #     options=[
-    #         "📊 Dashboard",
-    #         "⏱️ Controle de Horas",
-    #         "🧾 Notas Fiscais",
-    #         "🗂️ Cadastros",
-    #     ],
-    #     index=0,                
-    # )
+    st.divider() 
     
     st.markdown("""
         <style>
@@ -45,13 +35,14 @@ with st.sidebar:
     """, unsafe_allow_html=True)
     
     page = st.pills(
-        "",
+        "Navegação",
         [
             "📊 Dashboard",
             "⏱️ Controle de Horas",
             "🧾 Notas Fiscais",
             "🗂️ Cadastros",
         ],
+        label_visibility="collapsed",
         default="📊 Dashboard",
     )
     

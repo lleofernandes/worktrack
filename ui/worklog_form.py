@@ -118,7 +118,7 @@ def _render_form(session) -> None:
         if rate_obj:
             pc2.info(f"💰 **R$ {rev:,.2f} estimado**")
 
-    if st.button("💾 Salvar Apontamento", type="primary", use_container_width=True, key="wl_save"):
+    if st.button("💾 Salvar Apontamento", type="primary", width='stretch', key="wl_save"):
         error = _validate(contract_type, start_time, end_time, break_minutes, total_hours, progress_pct, preview_hours)
         if error:
             st.error(f"❌ {error}")
@@ -278,5 +278,5 @@ def _render_history(session) -> None:
             unsafe_allow_html=True,
         )
 
-    st.dataframe(pd.DataFrame(rows), use_container_width=True, hide_index=True)
+    st.dataframe(pd.DataFrame(rows), width='stretch', hide_index=True)
     st.caption(f"{len(logs)} apontamento(s).")

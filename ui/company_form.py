@@ -84,7 +84,7 @@ def _company_list(session) -> None:
             "Ativos": len(active_contracts),
             "Cadastrado em": c.created_at.strftime("%d/%m/%Y"),
         })
-    st.dataframe(pd.DataFrame(rows), use_container_width=True, hide_index=True)
+    st.dataframe(pd.DataFrame(rows), width='stretch', hide_index=True)
 
 
 def _company_new(session) -> None:
@@ -95,7 +95,7 @@ def _company_new(session) -> None:
         with col2:
             fantasy_name = st.text_input("Nome Fantasia")
         cnpj = st.text_input("CNPJ", placeholder="00.000.000/0001-00")
-        submitted = st.form_submit_button("💾 Cadastrar Empresa", type="primary", use_container_width=True)
+        submitted = st.form_submit_button("💾 Cadastrar Empresa", type="primary", width='stretch')
 
     if submitted:
         if not name.strip():
@@ -140,7 +140,7 @@ def _company_edit(session) -> None:
         with col2:
             new_fantasy = st.text_input("Nome Fantasia", value=company.fantasy_name or "")
         new_cnpj = st.text_input("CNPJ", value=company.cnpj or "")
-        saved = st.form_submit_button("💾 Salvar", type="primary", use_container_width=True)
+        saved = st.form_submit_button("💾 Salvar", type="primary", width='stretch')
 
     if saved:
         if not new_name.strip():
@@ -213,7 +213,7 @@ def _contract_list(session) -> None:
             row["Aditivo/h"] = f"R$ {float(ct.overage_rate):,.2f}" if ct.overage_rate else "—"
         rows.append(row)
 
-    st.dataframe(pd.DataFrame(rows), use_container_width=True, hide_index=True)
+    st.dataframe(pd.DataFrame(rows), width='stretch', hide_index=True)
     st.caption(f"{len(contracts)} contrato(s) encontrado(s).")
 
 
@@ -297,7 +297,7 @@ def _contract_new(session) -> None:
         with rc2:
             rate_start = st.date_input("Vigente a partir de *", value=date.today(), format="DD/MM/YYYY")
 
-        submitted = st.form_submit_button("💾 Cadastrar Contrato", type="primary", use_container_width=True)
+        submitted = st.form_submit_button("💾 Cadastrar Contrato", type="primary", width='stretch')
 
     if submitted:
         if hour_rate <= 0:
@@ -411,7 +411,7 @@ def _contract_edit(session) -> None:
                     format="DD/MM/YYYY",
                 )
             new_desc = st.text_input("Descrição", value=contract.description or "")
-            saved = st.form_submit_button("💾 Salvar Contrato", type="primary", use_container_width=True)
+            saved = st.form_submit_button("💾 Salvar Contrato", type="primary", width='stretch')
 
         if saved:
             try:
@@ -437,7 +437,7 @@ def _contract_edit(session) -> None:
                 "ID": r.id, "Taxa/h": f"R$ {float(r.hour_rate):,.2f}",
                 "Início": r.start_date.strftime("%d/%m/%Y"),
                 "Término": r.end_date.strftime("%d/%m/%Y") if r.end_date else "Vigente",
-            } for r in rates]), use_container_width=True, hide_index=True)
+            } for r in rates]), width='stretch', hide_index=True)
         else:
             st.info("Sem taxas cadastradas.")
 
@@ -447,7 +447,7 @@ def _contract_edit(session) -> None:
                 new_rate = st.number_input("Nova Taxa/h (R$) *", min_value=0.01, value=85.0, step=5.0, format="%.2f")
             with rc2:
                 new_rate_start = st.date_input("Vigente a partir de *", value=date.today(), format="DD/MM/YYYY")
-            add_rate = st.form_submit_button("💾 Adicionar Taxa", use_container_width=True)
+            add_rate = st.form_submit_button("💾 Adicionar Taxa", width='stretch')
 
         if add_rate:
             try:
@@ -494,7 +494,7 @@ def _render_projects() -> None:
                 "Nome": p.name,
                 "Descrição": p.description or "—",
                 "Criado em": p.created_at.strftime("%d/%m/%Y"),
-            } for p in projects]), use_container_width=True, hide_index=True)
+            } for p in projects]), width='stretch', hide_index=True)
 
             with st.expander("🗑️ Remover projeto"):
                 del_id = st.number_input("ID do projeto", min_value=1, step=1, key="del_proj")
@@ -513,7 +513,7 @@ def _render_projects() -> None:
         with st.form("form_new_project", clear_on_submit=True):
             proj_name = st.text_input("Nome do Projeto *")
             proj_desc = st.text_area("Descrição", height=80)
-            submitted = st.form_submit_button("💾 Cadastrar Projeto", type="primary", use_container_width=True)
+            submitted = st.form_submit_button("💾 Cadastrar Projeto", type="primary", width='stretch')
 
         if submitted:
             if not proj_name.strip():
@@ -555,7 +555,7 @@ def _render_holidays() -> None:
                     "Nacional": "✅" if h.is_national else "—",
                     "Facultativo": "⚠️ Sim" if h.is_optional else "Não",
                     "Observação": h.observation or "—",
-                } for h in holidays]), use_container_width=True, hide_index=True)
+                } for h in holidays]), width='stretch', hide_index=True)
 
                 with st.expander("🗑️ Remover"):
                     del_id = st.number_input("ID do feriado", min_value=1, step=1, key="del_hol")
@@ -581,7 +581,7 @@ def _render_holidays() -> None:
                 with col4:
                     h_opt = st.checkbox("Facultativo", value=False)
                 h_obs = st.text_input("Observação", max_chars=255)
-                submitted = st.form_submit_button("💾 Cadastrar", type="primary", use_container_width=True)
+                submitted = st.form_submit_button("💾 Cadastrar", type="primary", width='stretch')
 
             if submitted:
                 if not h_desc.strip():
