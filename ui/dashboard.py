@@ -257,15 +257,15 @@ def _render_hours_by_contract_from_metrics(metrics_list) -> None:
         return
 
     df = (
-        pd.DataFrame([{"Contrato": k, **v} for k, v in totals.items()])
-        .sort_values("Horas", ascending=False)
+        pd.DataFrame([{"Contrato": k, **v} for k, v in totals.items()]).sort_values("Horas", ascending=False)
     )
 
-    t1, t2 = st.tabs(["Horas", "Receita"])
+    t1, t2 = st.tabs(["Receita", "Horas"])
     with t1:
-        st.bar_chart(df.set_index("Contrato")["Horas"])
-    with t2:
         st.bar_chart(df.set_index("Contrato")["Receita (R$)"])
+    with t2:
+        st.bar_chart(df.set_index("Contrato")["Horas"])
+        
 
 
 # ---------------------------------------------------------------------------
@@ -278,7 +278,7 @@ def _render_monthly_evolution(session, contract_id: int, year: int) -> None:
         f"{ct.company.name if ct and ct.company else '?'} — {ct.contract_number or 'S/N'}"
         if ct else f"#{contract_id}"
     )
-    st.subheader(f"📈 Evolução — {label}")
+    st.subheader(f"📈 Evolução por Mês/Ano") # — {label}")
 
     ev = get_monthly_evolution(session, contract_id, year)
     if not ev:

@@ -178,20 +178,20 @@ def get_monthly_metrics(
     metrics.revenue_diff    = (metrics.actual_revenue - metrics.expected_revenue).quantize(Decimal("0.01"))
 
     
-    # ── DEBUG — remover depois ───────────────────────────────────────────
-    import sys
-    print(
-        f"[DEBUG] contract_id={contract_id}"
-        f" | type={contract_type.value}"
-        f" | monthly_fee={getattr(contract, 'monthly_fee', 'N/A')}"
-        f" | expected_hours={metrics.expected_hours}"
-        f" | worked_hours={metrics.worked_hours}"
-        f" | expected_rev={metrics.expected_revenue}"
-        f" | actual_rev={metrics.actual_revenue}",
-        file=sys.stderr,
-        flush=True,
-    )
-    # ────────────────────────────────────────────────────────────────────
+    # # ── DEBUG — remover depois ───────────────────────────────────────────
+    # import sys
+    # print(
+    #     f"[DEBUG] contract_id={contract_id}"
+    #     f" | type={contract_type.value}"
+    #     f" | monthly_fee={getattr(contract, 'monthly_fee', 'N/A')}"
+    #     f" | expected_hours={metrics.expected_hours}"
+    #     f" | worked_hours={metrics.worked_hours}"
+    #     f" | expected_rev={metrics.expected_revenue}"
+    #     f" | actual_rev={metrics.actual_revenue}",
+    #     file=sys.stderr,
+    #     flush=True,
+    # )
+    # # ────────────────────────────────────────────────────────────────────
 
 
     return metrics
