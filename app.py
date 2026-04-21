@@ -1,11 +1,11 @@
-import sys, os
 import streamlit as st
+
 from database.connection import init_db
 from ui.styles import inject_styles
 from core.auth import check_password, logout_button
 
 
-#--- Page configuration -----------------
+# --- Page configuration -----------------
 st.set_page_config(
     page_title="Work Track",
     page_icon="⏱️",
@@ -13,22 +13,23 @@ st.set_page_config(
     initial_sidebar_state="expanded",
 )
 
+
+# --- Authentication -----------------
 if not check_password():
     st.stop()
-    
 
-#--- Initialize db when connect -----------------
+
+# --- Initialize app -----------------
 init_db()
 inject_styles()
-sys.path.insert(0, os.path.dirname(__file__))
 
-#--- Sidebar -----------------
+
+# --- Sidebar -----------------
 with st.sidebar:
     st.success("Bem-vindo ao WorkTrack!")
-    
     st.caption("Controle de Horas & Faturamento")
-    st.divider() 
-    
+    st.divider()
+
     st.markdown("""
         <style>
         div[data-baseweb="tag"] {
@@ -37,7 +38,7 @@ with st.sidebar:
         }
         </style>
     """, unsafe_allow_html=True)
-    
+
     page = st.pills(
         "Navegação",
         [
@@ -49,26 +50,26 @@ with st.sidebar:
         label_visibility="collapsed",
         default="📊 Dashboard",
     )
-    
-    st.divider()    
-    
+
+    st.divider()
+
     logout_button()
-    
+
     st.markdown(
         """
-        <div style="position: fixed; bottom: 20px; width: 250px;">                        
+        <div style="position: fixed; bottom: 20px; width: 250px;">
             <p style="font-size: 12px;">Powered by LF Analytics © 2026</p>
         </div>
         """,
         unsafe_allow_html=True
     )
 
+
 st.title("⏱️ Work Track")
 st.write("Conteúdo Protegido")
 
 
-
-#--- Page routing -----------------
+# --- Page routing -----------------
 if page is None or page == "📊 Dashboard":
     from ui.dashboard import render_dashboard
     render_dashboard()

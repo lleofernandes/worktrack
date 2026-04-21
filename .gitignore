@@ -16,3 +16,4 @@ files_project/
 worktrack.db
 teste*
 seed.py
+.streamlit/secrets.toml

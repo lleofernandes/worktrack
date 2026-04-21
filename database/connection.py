@@ -1,71 +1,29 @@
-"""
-connection.py — Gerenciamento de conexão via SQLAlchemy.
-Suporte atual: PostgreSQL.
-Preparado para Alembic (migrations futuras).
-"""
-
-from __future__ import annotations
-from contextlib import contextmanager
-
-from sqlalchemy import create_engine, text
-from sqlalchemy.orm import sessionmaker, declarative_base
-
-from core.config import DATABASE_URL
+# pip install sqlalchemy psycopg2-binary
+import streamlit as st
+from sqlalchemy import create_engine
+from sqlalchemy.orm import declarative_base, sessionmaker
 
 
-def build_engine(database_url: str = DATABASE_URL):
-    if not database_url:
-        raise ValueError("DATABASE_URL não foi definida.")
+DATABASE_URL = st.secrets["DATABASE_URL"]
 
-    if not database_url.startswith("postgresql"):
-        raise ValueError(
-            "DATABASE_URL inválida para este projeto. "
-            "Use uma URL PostgreSQL, por exemplo: "
-            "postgresql+psycopg2://user:password@host:5432/database"
-        )
-
-    return create_engine(
-        database_url,
-        pool_pre_ping=True,
-        future=True,
-        echo=False,
-    )
-
-
-engine = build_engine()
+engine = create_engine(
+    DATABASE_URL,
+    pool_pre_ping=True
+)
 
 SessionLocal = sessionmaker(
-    bind=engine,
     autocommit=False,
     autoflush=False,
-    future=True,
+    bind=engine
 )
 
 Base = declarative_base()
 
 
-@contextmanager
 def get_session():
-    session = SessionLocal()
-    try:
-        yield session
-        session.commit()
-    except Exception:
-        session.rollback()
-        raise
-    finally:
-        session.close()
-
-
-def test_connection() -> None:
-    with engine.connect() as conn:
-        conn.execute(text("SELECT 1"))
+    return SessionLocal()
 
 
 def init_db():
-    """
-    Cria todas as tabelas no PostgreSQL (idempotente).
-    Em produção, substituir por Alembic migrations.
-    """
-    from database import models  # noqa: F401
+    from database.models import Company, WorkLog, Invoice
     Base.metadata.create_all(bind=engine)

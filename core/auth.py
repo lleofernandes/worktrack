@@ -1,9 +1,6 @@
-import hmac
-import os
 import streamlit as st
-from dotenv import load_dotenv
+import hmac
 
-load_dotenv()
 
 def check_password():
     if st.session_state.get("password_correct", False):
@@ -11,16 +8,15 @@ def check_password():
 
     def password_entered():
         password = st.session_state.get("password", "")
-        expected = os.getenv("APP_PWRD", "")
+        expected = st.secrets["APP_PASSWORD"]
 
-        if expected and hmac.compare_digest(password, expected):
+        if hmac.compare_digest(password, expected):
             st.session_state["password_correct"] = True
             del st.session_state["password"]
         else:
             st.session_state["password_correct"] = False
 
     st.subheader("🔐 Acesso restrito")
-    st.caption("Uso pessoal")
 
     with st.form("login_form", clear_on_submit=False):
         st.text_input("Senha", type="password", key="password")

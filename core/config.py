@@ -9,6 +9,7 @@ config.py — Configuração central da aplicação Work Track.
 import os
 from dotenv import load_dotenv
 from urllib.parse import quote_plus
+import streamlit as st
 
 load_dotenv()
 
@@ -18,13 +19,19 @@ APP_VERSION = "1.1.0"
 MAX_HOURS_PER_DAY = 24
 HOURS_PER_BUSINESS_DAY = 8
 
-DB_HOST = os.getenv("DB_HOST")
-DB_PORT = os.getenv("DB_PORT")
-DB_NAME = os.getenv("DB_NAME")
-DB_USER = os.getenv("DB_USER")
-DB_PASSWORD = os.getenv("DB_PASSWORD")
-# DB_PASSWORD = quote_plus(os.getenv("DB_PASSWORD", ""))
-DB_DRIVER = os.getenv("DB_DRIVER", "postgresql+psycopg2")
+# DB_HOST = os.getenv("DB_HOST")
+# DB_PORT = os.getenv("DB_PORT")
+# DB_NAME = os.getenv("DB_NAME")
+# DB_USER = os.getenv("DB_USER")
+# DB_PASSWORD = os.getenv("DB_PASSWORD")
+# DB_DRIVER = os.getenv("DB_DRIVER", "postgresql+psycopg2")
+
+DB_HOST = st.secrets("DB_HOST")
+DB_PORT = st.secrets("DB_PORT")
+DB_NAME = st.secrets("DB_NAME")
+DB_USER = st.secrets("DB_USER")
+DB_PASSWORD = st.secrets("DB_PASSWORD")
+DB_DRIVER = st.secrets("DB_DRIVER", "postgresql+psycopg2")
 
 required_vars = {
     "DB_HOST": DB_HOST,
@@ -40,4 +47,5 @@ if missing_vars:
         f"Variáveis obrigatórias do PostgreSQL não definidas: {', '.join(missing_vars)}"
     )
 
-DATABASE_URL = f"{DB_DRIVER}://{DB_USER}:{DB_PASSWORD}@{DB_HOST}:{DB_PORT}/{DB_NAME}"
+# DATABASE_URL = f"{DB_DRIVER}://{DB_USER}:{DB_PASSWORD}@{DB_HOST}:{DB_PORT}/{DB_NAME}"
+DATABASE_URL = st.secrets["database"]["url"]
