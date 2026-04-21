@@ -184,7 +184,7 @@ def get_monthly_metrics(
     # import sys
     # print(
     #     f"[DEBUG] contract_id={contract_id}"
-    #     f" | type={contract_type.value}"
+    #     f" | type={contract_type}"
     #     f" | monthly_fee={getattr(contract, 'monthly_fee', 'N/A')}"
     #     f" | expected_hours={metrics.expected_hours}"
     #     f" | worked_hours={metrics.worked_hours}"

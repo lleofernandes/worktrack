@@ -10,7 +10,7 @@ from contextlib import contextmanager
 from sqlalchemy import create_engine, text
 from sqlalchemy.orm import sessionmaker, declarative_base
 
-from config import DATABASE_URL
+from core.config import DATABASE_URL
 
 
 def build_engine(database_url: str = DATABASE_URL):

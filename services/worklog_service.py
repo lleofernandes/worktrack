@@ -10,7 +10,7 @@ from typing import Optional
 
 from sqlalchemy.orm import Session
 
-from config import MAX_HOURS_PER_DAY
+from core.config import MAX_HOURS_PER_DAY
 from database.models import Company, ContractRateHistory, Project, WorkLog
 from database.repository import (
     CompanyRepository,

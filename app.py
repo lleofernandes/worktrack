@@ -1,10 +1,9 @@
-"""
-app.py — Entry point do Work Track (Streamlit).
-"""
 import sys, os
 import streamlit as st
 from database.connection import init_db
 from ui.styles import inject_styles
+from core.auth import check_password, logout_button
+
 
 #--- Page configuration -----------------
 st.set_page_config(
@@ -14,6 +13,10 @@ st.set_page_config(
     initial_sidebar_state="expanded",
 )
 
+if not check_password():
+    st.stop()
+    
+
 #--- Initialize db when connect -----------------
 init_db()
 inject_styles()
@@ -21,7 +24,8 @@ sys.path.insert(0, os.path.dirname(__file__))
 
 #--- Sidebar -----------------
 with st.sidebar:
-    st.title("⏱️ Work Track")
+    st.success("Bem-vindo ao WorkTrack!")
+    
     st.caption("Controle de Horas & Faturamento")
     st.divider() 
     
@@ -46,7 +50,9 @@ with st.sidebar:
         default="📊 Dashboard",
     )
     
-    st.divider()                
+    st.divider()    
+    
+    logout_button()
     
     st.markdown(
         """
@@ -56,6 +62,10 @@ with st.sidebar:
         """,
         unsafe_allow_html=True
     )
+
+st.title("⏱️ Work Track")
+st.write("Conteúdo Protegido")
+
 
 
 #--- Page routing -----------------
