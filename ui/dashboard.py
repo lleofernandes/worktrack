@@ -4,7 +4,6 @@ dashboard.py — Dashboard analítico (por contrato).
 from __future__ import annotations
 
 from datetime import date
-from decimal import Decimal
 
 import pandas as pd
 import streamlit as st

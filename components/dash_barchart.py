@@ -9,21 +9,11 @@ import streamlit as st
 import plotly.graph_objects as go
 
 from database.models import Contract
-from database.repository import (
-    ContractRepository,
-    InvoiceRepository,
-    WorkLogRepository,
-)
-from services.analytics_service import (
-    get_all_contracts_metrics,
-    get_daily_revenue,
-    get_monthly_evolution,
-    get_monthly_metrics,
-)
-from utils.calculations import calc_productivity
-from utils.toast_helper import show_pending_toast
 
-from components.dash_linechart import _render_monthly_evolution
+from services.analytics_service import (
+    get_daily_revenue,
+
+)
 
 
 

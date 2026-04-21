@@ -70,9 +70,10 @@ def _extract_hours(wl) -> Decimal:
     if wl.start_time and wl.end_time:
         try:
             return calc_worked_hours(
-                wl.start_time, wl.end_time,
+                wl.start_time, 
+                wl.end_time,
                 wl.break_minutes,
-                wl.extra_partner_minutes,
+                wl.extra_partner_minutes
             )
         except ValueError:
             pass

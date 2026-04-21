@@ -211,6 +211,44 @@ class WorkLogRepository:
         if month:
             q = q.filter(extract("month", WorkLog.date) == month)
         return q.all()
+    
+    @staticmethod
+    def get_filtered(
+        session: Session,
+        contract_id: Optional[int] = None,
+        year: Optional[int] = None,
+        month: Optional[int] = None,
+        active_only: Optional[bool] = None,
+    ) -> list[WorkLog]:
+        q = (
+            session.query(WorkLog)
+            .options(
+                joinedload(WorkLog.contract).joinedload(Contract.company),
+                joinedload(WorkLog.project),   # ← carrega o projeto junto
+            )
+            .order_by(WorkLog.date.desc(), WorkLog.start_time.desc())
+        )
+
+        if contract_id:
+            q = q.filter(WorkLog.contract_id == contract_id)
+        else:
+            # Aplica filtro de status do contrato se necessário
+            if active_only is True:
+                q = q.join(Contract).filter(
+                    or_(Contract.end_date.is_(None), Contract.end_date >= date.today())
+                )
+            elif active_only is False:
+                q = q.join(Contract).filter(
+                    Contract.end_date < date.today()
+                )
+
+        if year:
+            q = q.filter(extract("year", WorkLog.date) == year)
+        if month:
+            q = q.filter(extract("month", WorkLog.date) == month)
+
+        return q.all()
+
 
     @staticmethod
     def list_by_contract_month(session: Session, contract_id: int,
@@ -235,7 +273,7 @@ class WorkLogRepository:
         if obj:
             session.delete(obj)
             return True
-        return False
+        return False    
 
 
 # ---------------------------------------------------------------------------

@@ -167,7 +167,7 @@ class Invoice(Base):
     created_at: Mapped[datetime]   = mapped_column(DateTime, nullable=False, server_default=func.now())
 
     __table_args__ = (
-        UniqueConstraint("contract_id", "invoice_number", name="uq_invoice_contract"),
+        UniqueConstraint("contract_id", "invoice_number", "date", "description", name="uq_invoice_contract"),
     )
 
     contract: Mapped["Contract"] = relationship("Contract", back_populates="invoices")
