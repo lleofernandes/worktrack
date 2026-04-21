@@ -1,30 +1,34 @@
 """
 connection.py — Gerenciamento de conexão via SQLAlchemy.
-Suporta: SQLite, PostgreSQL, SQL Server, MySQL.
+Suporte atual: PostgreSQL.
 Preparado para Alembic (migrations futuras).
 """
-from sqlalchemy import create_engine
-from sqlalchemy.orm import sessionmaker, DeclarativeBase
+
+from __future__ import annotations
+from contextlib import contextmanager
+
+from sqlalchemy import create_engine, text
+from sqlalchemy.orm import sessionmaker, declarative_base
+
 from config import DATABASE_URL
 
 
-class Base(DeclarativeBase):
-    pass
-
-
 def build_engine(database_url: str = DATABASE_URL):
-    """
-    Cria o engine SQLAlchemy.
-    connect_args com check_same_thread apenas para SQLite.
-    """
-    connect_args = {}
-    if database_url.startswith("sqlite"):
-        connect_args = {"check_same_thread": False}
+    if not database_url:
+        raise ValueError("DATABASE_URL não foi definida.")
+
+    if not database_url.startswith("postgresql"):
+        raise ValueError(
+            "DATABASE_URL inválida para este projeto. "
+            "Use uma URL PostgreSQL, por exemplo: "
+            "postgresql+psycopg2://user:password@host:5432/database"
+        )
 
     return create_engine(
         database_url,
-        connect_args=connect_args,
-        echo=False,  # Altere para True para debug de SQL
+        pool_pre_ping=True,
+        future=True,
+        echo=False,
     )
 
 
@@ -34,18 +38,14 @@ SessionLocal = sessionmaker(
     bind=engine,
     autocommit=False,
     autoflush=False,
+    future=True,
 )
 
+Base = declarative_base()
 
+
+@contextmanager
 def get_session():
-    """
-    Context manager de sessão.
-
-    Uso:
-        with get_session() as session:
-            session.add(obj)
-            session.commit()
-    """
     session = SessionLocal()
     try:
         yield session
@@ -57,9 +57,14 @@ def get_session():
         session.close()
 
 
+def test_connection() -> None:
+    with engine.connect() as conn:
+        conn.execute(text("SELECT 1"))
+
+
 def init_db():
     """
-    Cria todas as tabelas no banco (idempotente).
+    Cria todas as tabelas no PostgreSQL (idempotente).
     Em produção, substituir por Alembic migrations.
     """
     from database import models  # noqa: F401

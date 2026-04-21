@@ -55,7 +55,7 @@ def _render_form(session) -> None:
         return
 
     contract_options = {
-        f"[{ct.id}] {ct.company.name if ct.company else '?'} — {ct.contract_number or 'S/N'} ({CONTRACT_LABELS.get(ct.contract_type.value, ct.contract_type.value)})": ct.id
+        f"[{ct.id}] {ct.company.name if ct.company else '?'} — {ct.contract_number or 'S/N'} ({CONTRACT_LABELS.get(ct.contract_type, ct.contract_type)})": ct.id
         for ct in contracts
     }
 
@@ -88,7 +88,7 @@ def _render_form(session) -> None:
             field("Empresa", contract.company.fantasy_name or contract.company.name if contract and contract.company else "—")
 
         with ci2:
-            field("Tipo de Contrato", CONTRACT_LABELS.get(contract_type.value, contract_type.value))
+            field("Tipo de Contrato", CONTRACT_LABELS.get(contract_type, contract_type))
 
         with ci3:
             field("Nº Contrato", contract.contract_number or "—" if contract else "—")

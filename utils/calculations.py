@@ -8,8 +8,7 @@ from datetime import time
 from decimal import Decimal, ROUND_HALF_UP
 
 
-def calc_worked_hours(
-    start: time,
+def calc_worked_hours(start: time, 
     end: time,
     break_minutes: int,
     extra_partner_minutes: int,

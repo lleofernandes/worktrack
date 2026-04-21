@@ -52,35 +52,52 @@ class ContractRepository:
 
     @staticmethod
     def get_all(session: Session, active_only: Optional[bool] = None) -> list[Contract]:
-        q = (session.query(Contract)
-             .options(joinedload(Contract.company))
-             .order_by(Contract.start_date.desc()))
+        q = (
+            session.query(Contract)
+            .options(joinedload(Contract.company))
+            .order_by(Contract.start_date.desc())
+        )
+
         if active_only is True:
             q = q.filter(
-                (Contract.end_date == None) | (Contract.end_date >= date.today())  # noqa
+                or_(Contract.end_date.is_(None), Contract.end_date >= date.today())
             )
         elif active_only is False:
             q = q.filter(Contract.end_date < date.today())
+
         return q.all()
 
     @staticmethod
     def get_by_id(session: Session, contract_id: int) -> Optional[Contract]:
-        return (session.query(Contract)
-                .options(joinedload(Contract.company),
-                         joinedload(Contract.rate_history))
-                .filter(Contract.id == contract_id)
-                .first())
+        return (
+            session.query(Contract)
+            .options(
+                joinedload(Contract.company),
+                joinedload(Contract.rate_history),
+            )
+            .filter(Contract.id == contract_id)
+            .first()
+        )
 
     @staticmethod
-    def get_by_company(session: Session, company_id: int,
-                        active_only: Optional[bool] = None) -> list[Contract]:
-        q = (session.query(Contract)
-             .filter(Contract.company_id == company_id)
-             .order_by(Contract.start_date.desc()))
+    def get_by_company(
+        session: Session,
+        company_id: int,
+        active_only: Optional[bool] = None
+    ) -> list[Contract]:
+        q = (
+            session.query(Contract)
+            .filter(Contract.company_id == company_id)
+            .order_by(Contract.start_date.desc())
+        )
+
         if active_only is True:
             q = q.filter(
-                (Contract.end_date == None) | (Contract.end_date >= date.today())  # noqa
+                or_(Contract.end_date.is_(None), Contract.end_date >= date.today())
             )
+        elif active_only is False:
+            q = q.filter(Contract.end_date < date.today())
+
         return q.all()
 
     @staticmethod
@@ -128,21 +145,35 @@ class ContractRateRepository:
         )
 
     @staticmethod
-    def create(session: Session, contract_id: int, hour_rate: Decimal,
-               start_date: date, end_date: Optional[date] = None) -> ContractRateHistory:
-        rate = ContractRateHistory(contract_id=contract_id, hour_rate=hour_rate,
-                                   start_date=start_date, end_date=end_date)
+    def create(
+        session: Session,
+        contract_id: int,
+        hour_rate: Decimal,
+        start_date: date,
+        end_date: Optional[date] = None
+    ) -> ContractRateHistory:
+        rate = ContractRateHistory(
+            contract_id=contract_id,
+            hour_rate=hour_rate,
+            start_date=start_date,
+            end_date=end_date,
+        )
         session.add(rate)
         session.flush()
         return rate
 
     @staticmethod
-    def close_current(session: Session, contract_id: int,
-                       end_date: date) -> Optional[ContractRateHistory]:
+    def close_current(
+        session: Session,
+        contract_id: int,
+        end_date: date
+    ) -> Optional[ContractRateHistory]:
         current = (
             session.query(ContractRateHistory)
-            .filter(ContractRateHistory.contract_id == contract_id,
-                    ContractRateHistory.end_date == None)  # noqa
+            .filter(
+                ContractRateHistory.contract_id == contract_id,
+                ContractRateHistory.end_date.is_(None),
+            )
             .first()
         )
         if current:
@@ -155,14 +186,25 @@ class ProjectRepository:
 
     @staticmethod
     def get_all_by_contract(session: Session, contract_id: int) -> list[Project]:
-        return (session.query(Project)
-                .filter(Project.contract_id == contract_id)
-                .order_by(Project.name).all())
+        return (
+            session.query(Project)
+            .filter(Project.contract_id == contract_id)
+            .order_by(Project.name)
+            .all()
+        )
 
     @staticmethod
-    def create(session: Session, contract_id: int, name: str,
-               description: Optional[str] = None) -> Project:
-        obj = Project(contract_id=contract_id, name=name, description=description)
+    def create(
+        session: Session,
+        contract_id: int,
+        name: str,
+        description: Optional[str] = None
+    ) -> Project:
+        obj = Project(
+            contract_id=contract_id,
+            name=name,
+            description=description,
+        )
         session.add(obj)
         session.flush()
         return obj
@@ -191,27 +233,44 @@ class WorkLogRepository:
         return session.get(WorkLog, wl_id)
 
     @staticmethod
-    def list_filtered(session: Session, contract_id: Optional[int] = None,
-                       company_id: Optional[int] = None,
-                       month: Optional[int] = None,
-                       year: Optional[int] = None) -> list[WorkLog]:
-        q = (session.query(WorkLog)
-             .options(joinedload(WorkLog.contract).joinedload(Contract.company))
-             .order_by(WorkLog.date.desc(), WorkLog.start_time.desc()))
+    def list_filtered(
+        session: Session,
+        contract_id: Optional[int] = None,
+        company_id: Optional[int] = None,
+        month: Optional[int] = None,
+        year: Optional[int] = None
+    ) -> list[WorkLog]:
+        q = (
+            session.query(WorkLog)
+            .options(
+                joinedload(WorkLog.contract).joinedload(Contract.company),
+                joinedload(WorkLog.project),
+            )
+            .order_by(WorkLog.date.desc(), WorkLog.start_time.desc())
+        )
+
         if contract_id:
             q = q.filter(WorkLog.contract_id == contract_id)
         elif company_id:
             contract_ids = [
-                c.id for c in session.query(Contract.id)
-                .filter(Contract.company_id == company_id).all()
+                r.id for r in (
+                    session.query(Contract.id)
+                    .filter(Contract.company_id == company_id)
+                    .all()
+                )
             ]
-            q = q.filter(WorkLog.contract_id.in_(contract_ids))
+            if contract_ids:
+                q = q.filter(WorkLog.contract_id.in_(contract_ids))
+            else:
+                return []
+
         if year:
             q = q.filter(extract("year", WorkLog.date) == year)
         if month:
             q = q.filter(extract("month", WorkLog.date) == month)
+
         return q.all()
-    
+
     @staticmethod
     def get_filtered(
         session: Session,
@@ -224,7 +283,7 @@ class WorkLogRepository:
             session.query(WorkLog)
             .options(
                 joinedload(WorkLog.contract).joinedload(Contract.company),
-                joinedload(WorkLog.project),   # ← carrega o projeto junto
+                joinedload(WorkLog.project),
             )
             .order_by(WorkLog.date.desc(), WorkLog.start_time.desc())
         )
@@ -232,7 +291,6 @@ class WorkLogRepository:
         if contract_id:
             q = q.filter(WorkLog.contract_id == contract_id)
         else:
-            # Aplica filtro de status do contrato se necessário
             if active_only is True:
                 q = q.join(Contract).filter(
                     or_(Contract.end_date.is_(None), Contract.end_date >= date.today())
@@ -249,22 +307,35 @@ class WorkLogRepository:
 
         return q.all()
 
-
     @staticmethod
-    def list_by_contract_month(session: Session, contract_id: int,
-                                year: int, month: int) -> list[WorkLog]:
-        return (session.query(WorkLog)
-                .filter(WorkLog.contract_id == contract_id,
-                        extract("year",  WorkLog.date) == year,
-                        extract("month", WorkLog.date) == month)
-                .order_by(WorkLog.date).all())
+    def list_by_contract_month(
+        session: Session,
+        contract_id: int,
+        year: int,
+        month: int
+    ) -> list[WorkLog]:
+        return (
+            session.query(WorkLog)
+            .filter(
+                WorkLog.contract_id == contract_id,
+                extract("year", WorkLog.date) == year,
+                extract("month", WorkLog.date) == month,
+            )
+            .order_by(WorkLog.date)
+            .all()
+        )
 
     @staticmethod
     def get_months_with_logs(session: Session, contract_id: int, year: int) -> set[int]:
-        rows = (session.query(extract("month", WorkLog.date).label("m"))
-                .filter(WorkLog.contract_id == contract_id,
-                        extract("year", WorkLog.date) == year)
-                .distinct().all())
+        rows = (
+            session.query(extract("month", WorkLog.date).label("m"))
+            .filter(
+                WorkLog.contract_id == contract_id,
+                extract("year", WorkLog.date) == year,
+            )
+            .distinct()
+            .all()
+        )
         return {int(r.m) for r in rows}
 
     @staticmethod
@@ -273,7 +344,7 @@ class WorkLogRepository:
         if obj:
             session.delete(obj)
             return True
-        return False    
+        return False
 
 
 # ---------------------------------------------------------------------------
@@ -287,45 +358,71 @@ class InvoiceRepository:
         return obj
 
     @staticmethod
-    def exists_by_number(session: Session, contract_id: int,
-                          invoice_number: str,
-                          exclude_id: Optional[int] = None) -> bool:
-        q = (session.query(Invoice)
-             .filter(Invoice.contract_id == contract_id,
-                     Invoice.invoice_number == invoice_number.strip()))
+    def exists_by_number(
+        session: Session,
+        contract_id: int,
+        invoice_number: str,
+        exclude_id: Optional[int] = None
+    ) -> bool:
+        q = (
+            session.query(Invoice)
+            .filter(
+                Invoice.contract_id == contract_id,
+                Invoice.invoice_number == invoice_number.strip(),
+            )
+        )
         if exclude_id:
             q = q.filter(Invoice.id != exclude_id)
         return q.first() is not None
 
     @staticmethod
     def get_months_with_invoices(session: Session, contract_id: int, year: int) -> set[int]:
-        rows = (session.query(extract("month", Invoice.issue_date).label("m"))
-                .filter(Invoice.contract_id == contract_id, 
-                        extract("year", Invoice.issue_date) == year, 
-                        Invoice.amount > 0,
-                ).distinct().all())
+        rows = (
+            session.query(extract("month", Invoice.issue_date).label("m"))
+            .filter(
+                Invoice.contract_id == contract_id,
+                extract("year", Invoice.issue_date) == year,
+                Invoice.amount > 0,
+            )
+            .distinct()
+            .all()
+        )
         return {int(r.m) for r in rows}
 
     @staticmethod
-    def list_filtered(session: Session, contract_id: Optional[int] = None,
-                       company_id: Optional[int] = None,
-                       month: Optional[int] = None,
-                       year: Optional[int] = None) -> list[Invoice]:
-        q = (session.query(Invoice)
-             .options(joinedload(Invoice.contract).joinedload(Contract.company))
-             .order_by(Invoice.issue_date.desc()))
+    def list_filtered(
+        session: Session,
+        contract_id: Optional[int] = None,
+        company_id: Optional[int] = None,
+        month: Optional[int] = None,
+        year: Optional[int] = None
+    ) -> list[Invoice]:
+        q = (
+            session.query(Invoice)
+            .options(joinedload(Invoice.contract).joinedload(Contract.company))
+            .order_by(Invoice.issue_date.desc())
+        )
+
         if contract_id:
             q = q.filter(Invoice.contract_id == contract_id)
         elif company_id:
             contract_ids = [
-                c.id for c in session.query(Contract.id)
-                .filter(Contract.company_id == company_id).all()
+                r.id for r in (
+                    session.query(Contract.id)
+                    .filter(Contract.company_id == company_id)
+                    .all()
+                )
             ]
-            q = q.filter(Invoice.contract_id.in_(contract_ids))
+            if contract_ids:
+                q = q.filter(Invoice.contract_id.in_(contract_ids))
+            else:
+                return []
+
         if year:
             q = q.filter(extract("year", Invoice.issue_date) == year)
         if month:
             q = q.filter(extract("month", Invoice.issue_date) == month)
+
         return q.all()
 
     @staticmethod
@@ -342,21 +439,33 @@ class HolidayRepository:
 
     @staticmethod
     def get_in_range(session: Session, start: date, end: date) -> set[date]:
-        return {h.date for h in
-                session.query(Holiday)
-                .filter(Holiday.date >= start, Holiday.date <= end).all()}
+        rows = (
+            session.query(Holiday)
+            .filter(Holiday.date >= start, Holiday.date <= end)
+            .all()
+        )
+        return {h.date for h in rows}
 
     @staticmethod
     def get_all(session: Session) -> list[Holiday]:
         return session.query(Holiday).order_by(Holiday.date).all()
 
     @staticmethod
-    def create(session: Session, date_: date, description: str,
-               is_national: bool = True, is_optional: bool = False,
-               observation: Optional[str] = None) -> Holiday:
-        obj = Holiday(date=date_, description=description,
-                      is_national=is_national, is_optional=is_optional,
-                      observation=observation)
+    def create(
+        session: Session,
+        date_: date,
+        description: str,
+        is_national: bool = True,
+        is_optional: bool = False,
+        observation: Optional[str] = None
+    ) -> Holiday:
+        obj = Holiday(
+            date=date_,
+            description=description,
+            is_national=is_national,
+            is_optional=is_optional,
+            observation=observation,
+        )
         session.add(obj)
         session.flush()
         return obj

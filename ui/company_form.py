@@ -194,7 +194,7 @@ def _contract_list(session) -> None:
     rows = []
     for ct in contracts:
         rate = ContractRateRepository.get_active_rate(session, ct.id, date.today())
-        tipo = CONTRACT_LABELS.get(ct.contract_type.value, ct.contract_type.value)
+        tipo = CONTRACT_LABELS.get(ct.contract_type, ct.contract_type)
         row = {
             "ID": ct.id,
             "Empresa": ct.company.name if ct.company else "—",
@@ -207,7 +207,7 @@ def _contract_list(session) -> None:
             "Descrição": ct.description or "—",
         }
         # Exibe campos PROJECT_HOURS na listagem
-        if ct.contract_type.value == "PROJECT_HOURS":
+        if ct.contract_type == "PROJECT_HOURS":
             row["Fee Mensal"] = f"R$ {float(ct.monthly_fee):,.2f}" if ct.monthly_fee else "—"
             row["Hs Contrat."] = f"{float(ct.contracted_hours):.0f}h" if ct.contracted_hours else "—"
             row["Aditivo/h"] = f"R$ {float(ct.overage_rate):,.2f}" if ct.overage_rate else "—"
@@ -356,7 +356,7 @@ def _contract_edit(session) -> None:
         # Tipo fora do form para condicional
         new_type = st.selectbox(
             "Tipo", [ct.value for ct in ContractType],
-            index=[ct.value for ct in ContractType].index(contract.contract_type.value),
+            index=[ct.value for ct in ContractType].index(contract.contract_type),
             format_func=lambda x: CONTRACT_LABELS.get(x, x),
             key=f"edit_ct_type_{contract.id}",
         )

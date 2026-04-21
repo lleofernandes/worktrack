@@ -60,10 +60,6 @@ def _render_new(session) -> None:
     if contract and contract.company:
         with st.container(border=True):
             i1, i2, i3 = st.columns(3)
-            # i1.metric("Empresa",    contract.company.name)
-            # i2.metric("Fantasia",   contract.company.fantasy_name or "—")
-            # i3.metric("CNPJ",       contract.company.cnpj or "—")
-            # i4.metric("Tipo",       CONTRACT_LABELS.get(contract.contract_type.value, "—"))
             
             def field(label, value):
                 st.markdown(f"""
@@ -80,7 +76,7 @@ def _render_new(session) -> None:
                 field("CNPJ", contract.company.cnpj or "—")
 
             with i3:
-                field("Tipo", CONTRACT_LABELS.get(contract.contract_type.value, "—"))
+                field("Tipo", CONTRACT_LABELS.get(contract.contract_type, "—"))
 
     with st.form("form_new_invoice", clear_on_submit=True):
         col1, col2 = st.columns(2)
