@@ -50,9 +50,16 @@ def validate_invoice(
 
     if notes and len(notes) > 255:
         raise InvoiceValidationError("Observações devem ter no máximo 255 caracteres.")
+    
+    safe_editing_id: Optional[int] = None
+    if editing_id is not None:
+        try:
+            safe_editing_id = int(editing_id)
+        except (ValueError, TypeError):
+            safe_editing_id = None  # ignora se vier string inválida
 
     if InvoiceRepository.exists_by_number(
-        session, company_id, invoice_number, exclude_id=editing_id
+        session, company_id, invoice_number, exclude_id=safe_editing_id
     ):
         raise InvoiceValidationError(
             f"Número de NF '{invoice_number}' já existe para esta empresa."

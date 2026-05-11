@@ -31,6 +31,8 @@ CONTRACT_LABELS = {
     "PROJECT_HOURS": "Projeto c/ Horas",
 }
 
+_STATUS_MAP = {"Todos": None, "Ativo": True, "Inativo": False}
+
 
 def render_worklog_form() -> None:
     st.header("⏱️ Controle de Horas")
@@ -38,15 +40,49 @@ def render_worklog_form() -> None:
 
     session = SessionLocal()
     try:
-        tab_hist, tab_form = st.tabs(["📋 Histórico", "➕ Adicionar"])
+        tab_hist, tab_form, tab_edit = st.tabs(["📋 Histórico", "➕ Adicionar", "✏️ Editar"])
         with tab_hist:
             _render_history(session)
-
         with tab_form:
             _render_form(session)
+        with tab_edit:
+            _render_edit(session)
     finally:
         session.close()
 
+
+# ---------------------------------------------------------------------------
+# Helpers de reset
+# ---------------------------------------------------------------------------
+
+def _reset_form_keys() -> None:
+    """Limpa todas as chaves do formulário de adição do session_state."""
+    keys_to_clear = [
+        "wl_contract", "wl_date", "wl_project",
+        "wl_start", "wl_end", "wl_break", "wl_extra",
+        "wl_total", "wl_total_project", "wl_desc",
+    ]
+    for k in keys_to_clear:
+        if k in st.session_state:
+            del st.session_state[k]
+
+
+def _reset_edit_keys() -> None:
+    """Limpa as chaves do formulário de edição."""
+    keys_to_clear = [
+        "edit_wl_id", "edit_wl_date", "edit_wl_start", "edit_wl_end",
+        "edit_wl_break", "edit_wl_extra", "edit_wl_total",
+        "edit_wl_total_project", "edit_wl_desc", "edit_wl_project",
+        "_edit_loaded_id",
+    ]
+    for k in keys_to_clear:
+        if k in st.session_state:
+            del st.session_state[k]
+
+
+# ---------------------------------------------------------------------------
+# Formulário de adição
+# ---------------------------------------------------------------------------
 
 def _render_form(session) -> None:
     contracts = ContractRepository.get_all(session, active_only=True)
@@ -55,7 +91,7 @@ def _render_form(session) -> None:
         return
 
     contract_options = {
-        f"[{ct.id}] {ct.company.name if ct.company else '?'} — {ct.contract_number or 'S/N'} ({CONTRACT_LABELS.get(ct.contract_type, ct.contract_type)})": ct.id
+        f"[{ct.id}] {ct.company.name if ct.company else '?'}  — {ct.contract_number or 'S/N'} ({CONTRACT_LABELS.get(ct.contract_type, ct.contract_type)})": ct.id
         for ct in contracts
     }
 
@@ -86,13 +122,10 @@ def _render_form(session) -> None:
 
         with ci1:
             field("Empresa", contract.company.fantasy_name or contract.company.name if contract and contract.company else "—")
-
         with ci2:
             field("Tipo de Contrato", CONTRACT_LABELS.get(contract_type, contract_type))
-
         with ci3:
             field("Nº Contrato", contract.contract_number or "—" if contract else "—")
-
         with ci4:
             field("Taxa/h", f"R$ {float(rate_obj.hour_rate):,.2f}" if rate_obj else "⚠️ Sem taxa")
 
@@ -118,14 +151,7 @@ def _render_form(session) -> None:
         placeholder="Descreva as atividades realizadas...",
     )
 
-    preview_hours = _preview_hours(
-        contract_type,
-        start_time,
-        end_time,
-        break_minutes,
-        extra_partner_minutes,
-        total_hours,
-    )
+    preview_hours = _preview_hours(contract_type, start_time, end_time, break_minutes, extra_partner_minutes, total_hours)
 
     if preview_hours and preview_hours > 0:
         rev = float(preview_hours) * float(rate_obj.hour_rate) if rate_obj and contract_type == ContractType.WORK_HOUR else 0
@@ -136,12 +162,7 @@ def _render_form(session) -> None:
 
     progress_pct = None
     if contract_type == ContractType.PROJECT_HOURS:
-        logs_existentes = WorkLogRepository.list_by_contract_month(
-            session,
-            contract_id,
-            log_date.year,
-            log_date.month,
-        )
+        logs_existentes = WorkLogRepository.list_by_contract_month(session, contract_id, log_date.year, log_date.month)
         horas_acumuladas = sum(float(wl.total_hours or 0) for wl in logs_existentes)
         horas_contratadas = float(contract.contracted_hours or 0) if contract else 0
 
@@ -159,12 +180,7 @@ def _render_form(session) -> None:
         else:
             try:
                 descricao_normalizada = (description or "").strip()
-                logs_mesmo_periodo = WorkLogRepository.list_by_contract_month(
-                    session,
-                    contract_id,
-                    log_date.year,
-                    log_date.month,
-                )
+                logs_mesmo_periodo = WorkLogRepository.list_by_contract_month(session, contract_id, log_date.year, log_date.month)
 
                 duplicado = next(
                     (
@@ -182,12 +198,7 @@ def _render_form(session) -> None:
 
                 total_h = None
                 if start_time and end_time:
-                    total_h = Decimal(str(calc_worked_hours(
-                        start_time,
-                        end_time,
-                        break_minutes or 0,
-                        extra_partner_minutes or 0,
-                    )))
+                    total_h = Decimal(str(calc_worked_hours(start_time, end_time, break_minutes or 0, extra_partner_minutes or 0)))
                 elif total_hours is not None:
                     total_h = Decimal(str(total_hours))
 
@@ -204,15 +215,139 @@ def _render_form(session) -> None:
                     progress_pct=progress_pct if contract_type == ContractType.PROJECT_HOURS else None,
                     description=descricao_normalizada or None,
                 )
-
                 session.commit()
                 label = f"{float(preview_hours):.2f}h" if preview_hours else "registro"
                 set_toast(f"✅ Apontamento #{wl.id} salvo — {label} em {log_date.strftime('%d/%m/%Y')}!")
+                _reset_form_keys()
                 st.rerun()
             except Exception as e:
                 session.rollback()
                 st.error(f"❌ Erro: {e}")
 
+
+# ---------------------------------------------------------------------------
+# Formulário de edição
+# ---------------------------------------------------------------------------
+
+def _render_edit(session) -> None:
+    st.subheader("✏️ Editar Apontamento")
+
+    wl_id = st.number_input("ID do Apontamento *", min_value=1, step=1, key="edit_wl_id")
+
+    if st.button("🔍 Carregar", key="edit_load_btn"):
+        wl = WorkLogRepository.get_by_id(session, int(wl_id))
+        if not wl:
+            st.error(f"❌ Apontamento #{wl_id} não encontrado.")
+            return
+        st.session_state["_edit_loaded_id"] = wl.id
+        st.session_state["_edit_data"]      = {
+            "contract_id":           wl.contract_id,
+            "project_id":            wl.project_id,
+            "date":                  wl.date,
+            "start_time":            wl.start_time,
+            "end_time":              wl.end_time,
+            "break_minutes":         wl.break_minutes or 0,
+            "extra_partner_minutes": wl.extra_partner_minutes or 0,
+            "total_hours":           float(wl.total_hours) if wl.total_hours else None,
+            "description":           wl.description or "",
+            "contract_type":         wl.contract.contract_type if wl.contract else ContractType.WORK_HOUR,
+        }
+        st.rerun()
+
+    loaded_id = st.session_state.get("_edit_loaded_id")
+    data      = st.session_state.get("_edit_data", {})
+
+    if not loaded_id or not data:
+        st.info("Informe o ID do apontamento e clique em **Carregar**.")
+        return
+
+    st.success(f"Editando Apontamento **#{loaded_id}**")
+    contract_type = data["contract_type"]
+
+    with st.form("form_edit_worklog"):
+        col1, col2 = st.columns(2)
+        with col1:
+            edit_date = st.date_input("Data *", value=data["date"], format="DD/MM/YYYY", key="edit_wl_date")
+        with col2:
+            contracts = ContractRepository.get_all(session, active_only=None)
+            ct_opts = {f"[{ct.id}] {ct.company.name if ct.company else '?'} — {ct.contract_number or 'S/N'}": ct.id for ct in contracts}
+            default_label = next((k for k, v in ct_opts.items() if v == data["contract_id"]), list(ct_opts.keys())[0])
+            sel_ct = st.selectbox("Contrato *", list(ct_opts.keys()), index=list(ct_opts.keys()).index(default_label), key="edit_wl_contract")
+            edit_contract_id = ct_opts[sel_ct]
+
+        edit_contract  = ContractRepository.get_by_id(session, edit_contract_id)
+        contract_type  = edit_contract.contract_type if edit_contract else ContractType.WORK_HOUR
+
+        projects = ProjectRepository.get_all_by_contract(session, edit_contract_id)
+        proj_opts = {"— Nenhum —": None}
+        proj_opts.update({p.name: p.id for p in projects})
+        default_proj = next((k for k, v in proj_opts.items() if v == data["project_id"]), "— Nenhum —")
+        sel_proj = st.selectbox("Projeto (opcional)", list(proj_opts.keys()), index=list(proj_opts.keys()).index(default_proj), key="edit_wl_project")
+        edit_project_id = proj_opts[sel_proj]
+
+        st.divider()
+
+        edit_start = edit_end = edit_break = edit_extra = edit_total = None
+
+        if contract_type == ContractType.WORK_HOUR:
+            st.caption("⏰ **Por Hora**")
+            ec1, ec2, ec3, ec4 = st.columns(4)
+            with ec1:
+                edit_start = st.time_input("Início *", value=data["start_time"] or time(9, 0), step=1800, key="edit_wl_start")
+            with ec2:
+                edit_end = st.time_input("Término *", value=data["end_time"] or time(18, 0), step=1800, key="edit_wl_end")
+            with ec3:
+                edit_break = st.number_input("Intervalo (min)", 0, 480, data["break_minutes"], 15, key="edit_wl_break")
+            with ec4:
+                edit_extra = st.number_input("Extra Parceiro (min)", 0, 480, data["extra_partner_minutes"], 5, key="edit_wl_extra")
+        else:
+            st.caption("📦 **Projeto / Projeto c/ Horas**")
+            edit_total = st.number_input("Total de Horas *", 0.25, 24.0, data["total_hours"] or 8.0, 0.25, format="%.2f", key="edit_wl_total")
+
+        edit_desc = st.text_area("Descrição / Atividades", value=data["description"], height=100, key="edit_wl_desc")
+
+        submitted = st.form_submit_button("💾 Salvar Alterações", type="primary", use_container_width=True)
+
+    if submitted:
+        error = _validate(contract_type, edit_start, edit_end, edit_break, edit_total, None,
+                          _preview_hours(contract_type, edit_start, edit_end, edit_break, edit_extra, edit_total))
+        if error:
+            st.error(f"❌ {error}")
+            return
+        try:
+            wl = WorkLogRepository.get_by_id(session, loaded_id)
+            if not wl:
+                st.error("❌ Apontamento não encontrado.")
+                return
+
+            wl.date                  = edit_date
+            wl.contract_id           = edit_contract_id
+            wl.project_id            = edit_project_id
+            wl.description           = (edit_desc or "").strip() or None
+            wl.break_minutes         = edit_break or 0
+            wl.extra_partner_minutes = int(edit_extra or 0)
+
+            if contract_type == ContractType.WORK_HOUR and edit_start and edit_end:
+                wl.start_time  = edit_start
+                wl.end_time    = edit_end
+                wl.total_hours = Decimal(str(calc_worked_hours(edit_start, edit_end, edit_break or 0, edit_extra or 0)))
+            elif edit_total:
+                wl.start_time  = None
+                wl.end_time    = None
+                wl.total_hours = Decimal(str(edit_total))
+
+            session.commit()
+            set_toast(f"✅ Apontamento #{loaded_id} atualizado!")
+            _reset_edit_keys()
+            st.rerun()
+        except Exception as e:
+            session.rollback()
+            st.error(f"❌ Erro: {e}")
+
+
+# ---------------------------------------------------------------------------
+# Campos helpers
+# ---------------------------------------------------------------------------
 
 def _fields_work_hour():
     st.caption("⏰ **Por Hora** — informe o horário trabalhado")
@@ -224,15 +359,8 @@ def _fields_work_hour():
     with c3:
         break_min = st.number_input("Intervalo (min)", 0, 480, 60, 15, key="wl_break")
     with c4:
-        extra_min = st.number_input(
-            "Extra Parceiro (min)",
-            min_value=0,
-            max_value=480,
-            value=0,
-            step=5,
-            key="wl_extra",
-            help="Minutos extras do parceiro. Ex: 45, 90, 120...",
-        )
+        extra_min = st.number_input("Extra Parceiro (min)", min_value=0, max_value=480, value=0, step=5, key="wl_extra",
+                                    help="Minutos extras do parceiro. Ex: 45, 90, 120...")
     return start_time, end_time, break_min, extra_min, None, None
 
 
@@ -265,7 +393,6 @@ def _preview_hours(ct, start, end, brk, extra, total):
             return calc_worked_hours(start, end, brk or 0, extra or 0)
         except Exception:
             return None
-
     if ct in (ContractType.PROJECT_HOURS, ContractType.PROJECT) and total:
         return Decimal(str(total))
     return None
@@ -289,6 +416,10 @@ def _validate(ct, start, end, brk, total, pct, preview):
     return None
 
 
+# ---------------------------------------------------------------------------
+# Histórico
+# ---------------------------------------------------------------------------
+
 def _render_history(session) -> None:
     st.subheader("📋 Histórico de Apontamentos")
 
@@ -301,11 +432,12 @@ def _render_history(session) -> None:
         hf1, hf2, hf3, hf4 = st.columns(4)
 
         with hf1:
-            sel_status = st.selectbox("Status Contrato", ["Todos", "Ativo", "Inativo"], key="hist_status")
-            active_filter = {"Todos": None, "Ativo": True, "Inativo": False}[sel_status]
+            _status_keys = list(_STATUS_MAP.keys())
+            status_sel = st.selectbox("Status Contrato", _status_keys, index=_status_keys.index("Ativo"), key="hist_status")
+            filter_active = _STATUS_MAP[status_sel]
 
         with hf2:
-            contracts_filtered = ContractRepository.get_all(session, active_only=active_filter)
+            contracts_filtered = ContractRepository.get_all(session, active_only=filter_active)
             ct_opts = {"Todos": None}
             ct_opts.update({
                 f"[{ct.id}] {ct.company.fantasy_name or ct.company.name} — {ct.contract_number or 'S/N'}": ct.id
@@ -316,39 +448,21 @@ def _render_history(session) -> None:
 
         with hf3:
             year_opts = ["Todos"] + list(range(2021, date.today().year + 1))
-            sel_year = st.selectbox(
-                "Ano",
-                year_opts,
-                index=year_opts.index(date.today().year),
-                key="hist_year",
-            )
+            sel_year = st.selectbox("Ano", year_opts, index=year_opts.index(date.today().year), key="hist_year")
             filter_year = None if sel_year == "Todos" else int(sel_year)
 
         with hf4:
             month_opts = {"Todos": None}
-            month_opts.update({
-                date(2021, m, 1).strftime("%B").capitalize(): m
-                for m in range(1, 13)
-            })
+            month_opts.update({date(2021, m, 1).strftime("%B").capitalize(): m for m in range(1, 13)})
             month_labels = list(month_opts.keys())
             cur_month_label = date(2021, date.today().month, 1).strftime("%B").capitalize()
-            sel_month = st.selectbox(
-                "Mes",
-                month_labels,
-                index=month_labels.index(cur_month_label),
-                key="hist_month",
-            )
+            sel_month = st.selectbox("Mes", month_labels, index=month_labels.index(cur_month_label), key="hist_month")
             filter_month = month_opts[sel_month]
 
-    logs = WorkLogRepository.list_filtered(
-        session,
-        contract_id=filter_ct_id,
-        year=filter_year,
-        month=filter_month,
-    )
+    logs = WorkLogRepository.list_filtered(session, contract_id=filter_ct_id, year=filter_year, month=filter_month)
 
-    if active_filter is not None:
-        logs = [wl for wl in logs if wl.contract and wl.contract.is_active == active_filter]
+    if filter_active is not None:
+        logs = [wl for wl in logs if wl.contract and wl.contract.is_active == filter_active]
 
     if not logs:
         st.info("Nenhum apontamento encontrado.")
@@ -362,26 +476,22 @@ def _render_history(session) -> None:
         if wl.total_hours is not None and float(wl.total_hours) > 0:
             horas = float(wl.total_hours)
         elif wl.start_time and wl.end_time:
-            horas = float(calc_worked_hours(
-                wl.start_time,
-                wl.end_time,
-                wl.break_minutes or 0,
-                wl.extra_partner_minutes or 0,
-            ))
+            horas = float(calc_worked_hours(wl.start_time, wl.end_time, wl.break_minutes or 0, wl.extra_partner_minutes or 0))
         else:
             horas = 0.0
 
         rows.append({
-            "Data": wl.date.strftime("%d/%m/%Y"),
-            "Cliente": company,
-            "Contrato": ct.contract_number or "S/N" if ct else "-",
-            "Projeto": wl.project.name if wl.project else "-",
-            "Inicio": wl.start_time.strftime("%H:%M") if wl.start_time else "-",
-            "Fim": wl.end_time.strftime("%H:%M") if wl.end_time else "-",
+            "ID":             wl.id,
+            "Data":           wl.date.strftime("%d/%m/%Y"),
+            "Cliente":        company,
+            "Contrato":       ct.contract_number or "S/N" if ct else "-",
+            "Projeto":        wl.project.name if wl.project else "-",
+            "Inicio":         wl.start_time.strftime("%H:%M") if wl.start_time else "-",
+            "Fim":            wl.end_time.strftime("%H:%M") if wl.end_time else "-",
             "Intervalo(min)": wl.break_minutes or 0,
-            "Horas": horas,
-            "Progresso": float(wl.progress_pct) if wl.progress_pct is not None else None,
-            "Descricao": wl.description or "",
+            "Horas":          horas,
+            "Progresso":      float(wl.progress_pct) if wl.progress_pct is not None else None,
+            "Descricao":      wl.description or "",
         })
 
     df = pd.DataFrame(rows)
@@ -389,11 +499,10 @@ def _render_history(session) -> None:
     df = df.sort_values(by="Data", ascending=True).reset_index(drop=True)
     df["Data"] = df["Data"].dt.strftime("%d/%m/%Y")
 
-    total_horas = df["Horas"].sum()
+    total_horas    = df["Horas"].sum()
     total_registros = len(df)
 
     mc1, mc2, mc3, mc4, mc5 = st.columns([2, 2, 2, 1.5, 1.5])
-
     mc1.metric("Total de Registros", total_registros)
     mc2.metric("Total de Horas", f"{total_horas:.2f}h")
     mc3.metric("Contratos", len(set(df["Contrato"].tolist())))
@@ -422,14 +531,24 @@ def _render_history(session) -> None:
 
     df["Progresso (%)"] = df["Progresso"].apply(lambda x: f"{x:.1f}%" if x is not None and float(x) > 0 else "—")
 
-    st.dataframe(
-        df.drop(columns=["Progresso"]),
-        width="stretch",
-        hide_index=True,
-    )
+    st.dataframe(df.drop(columns=["Progresso"]), width="stretch", hide_index=True)
+
+    with st.expander("🗑️ Remover Apontamento"):
+        del_id = st.number_input("ID do Apontamento", min_value=1, step=1, key="del_wl_id")
+        if st.button("Remover Apontamento", type="secondary"):
+            found = WorkLogRepository.delete(session, int(del_id))
+            if found:
+                session.commit()
+                set_toast(f"✅ Apontamento #{del_id} removido.")
+                st.rerun()
+            else:
+                st.error(f"ID #{del_id} não encontrado.")
 
 
-# ── Gerador Excel ─────────────────────────────────────────────────────
+# ---------------------------------------------------------------------------
+# Exportadores
+# ---------------------------------------------------------------------------
+
 def _export_excel(df, year, month) -> bytes:
     wb = openpyxl.Workbook()
     ws = wb.active
@@ -473,9 +592,9 @@ def _export_excel(df, year, month) -> bytes:
 
     total_row = len(df) + 6
     ws.cell(row=total_row, column=1, value="TOTAL HORAS").font = Font(bold=True)
-    ws.cell(row=total_row, column=8, value=df["Horas"].sum()).font = Font(bold=True)
+    ws.cell(row=total_row, column=9, value=df["Horas"].sum()).font = Font(bold=True)
 
-    col_widths = [12, 25, 14, 20, 8, 8, 15, 8, 13, 40]
+    col_widths = [8, 12, 25, 14, 20, 8, 8, 15, 8, 13, 40]
     for i, width in enumerate(col_widths, start=1):
         ws.column_dimensions[openpyxl.utils.get_column_letter(i)].width = width
 
@@ -484,16 +603,12 @@ def _export_excel(df, year, month) -> bytes:
     return buf.getvalue()
 
 
-
 def _clean(val: str) -> str:
     return (str(val)
-            .replace("—", "-")
-            .replace("–", "-")
-            .replace("\u2026", "...")
-            .replace("\u201c", '"').replace("\u201d", '"')
+            .replace("—", "-").replace("–", "-")
+            .replace("\u2026", "...").replace("\u201c", '"').replace("\u201d", '"')
             .replace("\u2018", "'").replace("\u2019", "'")
-            .encode("latin-1", errors="replace")
-            .decode("latin-1"))
+            .encode("latin-1", errors="replace").decode("latin-1"))
 
 
 class PDFWithFooter(FPDF):
@@ -509,10 +624,8 @@ class PDFWithFooter(FPDF):
         self.cell(0, 6, texto, align="R")
 
 
-# ── Gerador PDF ───────────────────────────────────────────────────────
 def _export_pdf(df, year, month, total_horas: float) -> bytes:
     periodo = f"{month or 'Todos'}/{year or 'Todos'}"
-
     pdf = PDFWithFooter(periodo=periodo, orientation="L", unit="mm", format="A4")
     pdf.set_auto_page_break(auto=True, margin=15)
     pdf.add_page()
@@ -527,7 +640,7 @@ def _export_pdf(df, year, month, total_horas: float) -> bytes:
     pdf.cell(0, 6, f"Total de Horas: {total_horas:.2f}h  |  Total de Registros: {len(df)}", ln=True, align="C")
     pdf.ln(3)
 
-    cols = ["Data", "Cliente", "Contrato", "Projeto", "Horas", "Descrição"]
+    cols   = ["Data", "Cliente", "Contrato", "Projeto", "Horas", "Descrição"]
     widths = [25, 65, 25, 50, 25, 87]
 
     pdf.set_font("Helvetica", "B", 8)
@@ -543,11 +656,9 @@ def _export_pdf(df, year, month, total_horas: float) -> bytes:
     for i, row in df.iterrows():
         fill = i % 2 == 0
         pdf.set_fill_color(240, 248, 248) if fill else pdf.set_fill_color(255, 255, 255)
-
-        desc = str(row.get("Descricao", "") or "")
+        desc     = str(row.get("Descricao", "") or "")
         desc_fmt = (desc[:45] + "...") if len(desc) > 45 else desc
         horas_val = row.get("Horas", 0) or 0
-
         values = [
             _clean(str(row.get("Data", ""))),
             _clean(str(row.get("Cliente", ""))),
