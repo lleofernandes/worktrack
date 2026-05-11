@@ -65,8 +65,8 @@ with st.sidebar:
     )
 
 
-st.title("⏱️ Work Track")
-st.write("Conteúdo Protegido")
+# st.title("⏱️ Work Track")
+# st.write("Conteúdo Protegido")
 
 
 # --- Page routing -----------------

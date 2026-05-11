@@ -23,12 +23,12 @@ def check_password():
         submitted = st.form_submit_button("Entrar")
         if submitted:
             password_entered()
+            if st.session_state.get("password_correct", False):
+                st.rerun()
+    
 
-    if st.session_state.get("password_correct", False):
-        return True
-
-    if "password_correct" in st.session_state:
-        st.error("Senha incorreta")
+    if "password_correct" in st.session_state and not st.session_state["password_correct"]:
+        st.error("❌ Senha incorreta")
 
     return False
 

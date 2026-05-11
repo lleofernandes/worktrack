@@ -240,7 +240,7 @@ def _render_edit(session) -> None:
             st.error(f"❌ Apontamento #{wl_id} não encontrado.")
             return
         st.session_state["_edit_loaded_id"] = wl.id
-        st.session_state["_edit_data"]      = {
+        st.session_state["_edit_data"] = {
             "contract_id":           wl.contract_id,
             "project_id":            wl.project_id,
             "date":                  wl.date,
@@ -262,7 +262,6 @@ def _render_edit(session) -> None:
         return
 
     st.success(f"Editando Apontamento **#{loaded_id}**")
-    contract_type = data["contract_type"]
 
     with st.form("form_edit_worklog"):
         col1, col2 = st.columns(2)
@@ -270,50 +269,104 @@ def _render_edit(session) -> None:
             edit_date = st.date_input("Data *", value=data["date"], format="DD/MM/YYYY", key="edit_wl_date")
         with col2:
             contracts = ContractRepository.get_all(session, active_only=None)
-            ct_opts = {f"[{ct.id}] {ct.company.name if ct.company else '?'} — {ct.contract_number or 'S/N'}": ct.id for ct in contracts}
+            ct_opts = {
+                f"[{ct.id}] {ct.company.name if ct.company else '?'} — {ct.contract_number or 'S/N'}": ct.id
+                for ct in contracts
+            }
             default_label = next((k for k, v in ct_opts.items() if v == data["contract_id"]), list(ct_opts.keys())[0])
-            sel_ct = st.selectbox("Contrato *", list(ct_opts.keys()), index=list(ct_opts.keys()).index(default_label), key="edit_wl_contract")
+            sel_ct = st.selectbox(
+                "Contrato *",
+                list(ct_opts.keys()),
+                index=list(ct_opts.keys()).index(default_label),
+                key="edit_wl_contract",
+            )
             edit_contract_id = ct_opts[sel_ct]
 
-        edit_contract  = ContractRepository.get_by_id(session, edit_contract_id)
-        contract_type  = edit_contract.contract_type if edit_contract else ContractType.WORK_HOUR
+        edit_contract = ContractRepository.get_by_id(session, edit_contract_id)
+        contract_type = edit_contract.contract_type if edit_contract else ContractType.WORK_HOUR
 
         projects = ProjectRepository.get_all_by_contract(session, edit_contract_id)
         proj_opts = {"— Nenhum —": None}
         proj_opts.update({p.name: p.id for p in projects})
         default_proj = next((k for k, v in proj_opts.items() if v == data["project_id"]), "— Nenhum —")
-        sel_proj = st.selectbox("Projeto (opcional)", list(proj_opts.keys()), index=list(proj_opts.keys()).index(default_proj), key="edit_wl_project")
+        sel_proj = st.selectbox(
+            "Projeto (opcional)",
+            list(proj_opts.keys()),
+            index=list(proj_opts.keys()).index(default_proj),
+            key="edit_wl_project",
+        )
         edit_project_id = proj_opts[sel_proj]
 
         st.divider()
 
-        edit_start = edit_end = edit_break = edit_extra = edit_total = None
+        # ── Campos de horário — exibidos para TODOS os tipos de contrato ──
+        st.caption("⏰ **Horário trabalhado**")
+        ec1, ec2, ec3, ec4 = st.columns(4)
+        with ec1:
+            _start_default = data["start_time"] if data.get("start_time") else time(9, 0)
+            edit_start = st.time_input("Início", value=_start_default, step=1800, key="edit_wl_start")
+        with ec2:
+            _end_default = data["end_time"] if data.get("end_time") else time(18, 0)
+            edit_end = st.time_input("Término", value=_end_default, step=1800, key="edit_wl_end")
+        with ec3:
+            edit_break = st.number_input(
+                "Intervalo (min)", 0, 480, int(data.get("break_minutes") or 0), 15, key="edit_wl_break"
+            )
+        with ec4:
+            edit_extra = st.number_input(
+                "Extra Parceiro (min)",
+                min_value=0, max_value=480,
+                value=int(data.get("extra_partner_minutes") or 0),
+                step=5,
+                key="edit_wl_extra",
+                help="Minutos extras do parceiro. Ex: 45, 90, 120...",
+            )
 
-        if contract_type == ContractType.WORK_HOUR:
-            st.caption("⏰ **Por Hora**")
-            ec1, ec2, ec3, ec4 = st.columns(4)
-            with ec1:
-                edit_start = st.time_input("Início *", value=data["start_time"] or time(9, 0), step=1800, key="edit_wl_start")
-            with ec2:
-                edit_end = st.time_input("Término *", value=data["end_time"] or time(18, 0), step=1800, key="edit_wl_end")
-            with ec3:
-                edit_break = st.number_input("Intervalo (min)", 0, 480, data["break_minutes"], 15, key="edit_wl_break")
-            with ec4:
-                edit_extra = st.number_input("Extra Parceiro (min)", 0, 480, data["extra_partner_minutes"], 5, key="edit_wl_extra")
-        else:
-            st.caption("📦 **Projeto / Projeto c/ Horas**")
-            edit_total = st.number_input("Total de Horas *", 0.25, 24.0, data["total_hours"] or 8.0, 0.25, format="%.2f", key="edit_wl_total")
+        # ── Total manual — só para PROJECT / PROJECT_HOURS ──
+        edit_total = None
+        if contract_type in (ContractType.PROJECT, ContractType.PROJECT_HOURS):
+            st.caption("📦 **Ou informe o total de horas diretamente** (quando não há início/fim)")
+            edit_total = st.number_input(
+                "Total de Horas",
+                min_value=0.0, max_value=24.0,
+                value=float(data.get("total_hours") or 0.0),
+                step=0.25, format="%.2f",
+                key="edit_wl_total",
+            )
 
-        edit_desc = st.text_area("Descrição / Atividades", value=data["description"], height=100, key="edit_wl_desc")
+        edit_desc = st.text_area(
+            "Descrição / Atividades",
+            value=data.get("description", ""),
+            height=100,
+            key="edit_wl_desc",
+        )
 
         submitted = st.form_submit_button("💾 Salvar Alterações", type="primary", use_container_width=True)
 
     if submitted:
-        error = _validate(contract_type, edit_start, edit_end, edit_break, edit_total, None,
-                          _preview_hours(contract_type, edit_start, edit_end, edit_break, edit_extra, edit_total))
+        # Prioridade: horário início/fim → total manual
+        if edit_start and edit_end and edit_end > edit_start:
+            preview = _preview_hours(ContractType.WORK_HOUR, edit_start, edit_end, edit_break, edit_extra, None)
+            use_time_fields = True
+        elif edit_total and edit_total > 0:
+            preview = Decimal(str(edit_total))
+            use_time_fields = False
+        else:
+            st.error("❌ Informe horário de início/término OU um total de horas maior que zero.")
+            return
+
+        error = _validate(
+            contract_type,
+            edit_start if use_time_fields else None,
+            edit_end if use_time_fields else None,
+            edit_break,
+            edit_total if not use_time_fields else None,
+            None, preview,
+        )
         if error:
             st.error(f"❌ {error}")
             return
+
         try:
             wl = WorkLogRepository.get_by_id(session, loaded_id)
             if not wl:
@@ -327,17 +380,17 @@ def _render_edit(session) -> None:
             wl.break_minutes         = edit_break or 0
             wl.extra_partner_minutes = int(edit_extra or 0)
 
-            if contract_type == ContractType.WORK_HOUR and edit_start and edit_end:
+            if use_time_fields:
                 wl.start_time  = edit_start
                 wl.end_time    = edit_end
                 wl.total_hours = Decimal(str(calc_worked_hours(edit_start, edit_end, edit_break or 0, edit_extra or 0)))
-            elif edit_total:
+            else:
                 wl.start_time  = None
                 wl.end_time    = None
                 wl.total_hours = Decimal(str(edit_total))
 
             session.commit()
-            set_toast(f"✅ Apontamento #{loaded_id} atualizado!")
+            set_toast(f"✅ Apontamento #{loaded_id} atualizado — {float(wl.total_hours):.2f}h em {edit_date.strftime('%d/%m/%Y')}!")
             _reset_edit_keys()
             st.rerun()
         except Exception as e:
