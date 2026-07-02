@@ -14,6 +14,7 @@ from database.models import ContractType
 from database.repository import (
     ContractRepository, ContractRateRepository, InvoiceRepository,
 )
+from utils.date_utils import month_name_pt
 from utils.toast_helper import set_toast, show_pending_toast
 
 CONTRACT_LABELS = {
@@ -148,15 +149,17 @@ def _render_history(session) -> None:
         sel = st.selectbox("Empresa", list(co_opts.keys()), key="inv_hist_company")
         filter_company = co_opts[sel]
     with fc2:
-        mo = {"Todos": None, **{date(2021, m, 1).strftime("%B").capitalize(): m for m in range(1, 13)}}
-        ml = st.selectbox("Mês", list(mo.keys()),
-                          index=list(mo.keys()).index(date(2021, date.today().month, 1).strftime("%B").capitalize()),
-                          key="inv_hist_month")
-        filter_month = mo[ml]
-    with fc3:
         yo = {"Todos": None, **{str(y): y for y in range(2021, date.today().year + 1)}}
         yl = st.selectbox("Ano", list(yo.keys()), index=list(yo.keys()).index(str(date.today().year)), key="inv_hist_year")
         filter_year = yo[yl]
+        
+    with fc3:
+        mo = {"Todos": None, **{month_name_pt(m): m for m in range(1, 13)}}
+        ml = st.selectbox("Mês", list(mo.keys()),
+                          index=list(mo.keys()).index(month_name_pt(date.today().month)),
+                          key="inv_hist_month")
+        filter_month = mo[ml]
+        
 
     invoices = InvoiceRepository.list_filtered(session, company_id=filter_company, month=filter_month, year=filter_year)
 

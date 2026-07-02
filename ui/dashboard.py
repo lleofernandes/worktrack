@@ -21,6 +21,7 @@ from services.analytics_service import (
     get_monthly_metrics,
 )
 from utils.calculations import calc_productivity
+from utils.date_utils import month_name_pt
 from utils.toast_helper import show_pending_toast
 
 from components.dash_linechart import _render_monthly_evolution, render_annual_revenue_linechart
@@ -49,27 +50,6 @@ def render_dashboard() -> None:
                 filter_active = _STATUS_MAP[status_sel]
 
             with fc2:
-                month_opts = {"Todos": None}
-                month_opts.update({
-                    date(2021, m, 1).strftime("%B").capitalize(): m
-                    for m in range(1, 13)
-                })
-                month_labels    = list(month_opts.keys())
-                cur_month_label = date(2021, date.today().month, 1).strftime("%B").capitalize()
-                month_sel       = st.selectbox("Mês", month_labels,
-                                               index=month_labels.index(cur_month_label),
-                                               key="dash_month")
-                filter_month = month_opts[month_sel]
-
-            with fc3:
-                year_opts = ["Todos"] + list(range(date.today().year - 1, date.today().year + 1))
-                # year_opts = ["Todos"] + list(range(2021, date.today().year + 1))
-                year_sel  = st.selectbox("Ano", year_opts,
-                                         index=year_opts.index(date.today().year),
-                                         key="dash_year")
-                filter_year = None if year_sel == "Todos" else int(year_sel)
-
-            with fc4:
                 contracts = sorted(
                     ContractRepository.get_all(session, active_only=filter_active),
                     key=lambda c: c.id, reverse=True,
@@ -80,7 +60,26 @@ def render_dashboard() -> None:
                     for ct in contracts
                 })
                 sel = st.selectbox("Contrato", list(ct_opts.keys()), key="dash_contract")
-                filter_contract_id = ct_opts[sel]
+                filter_contract_id = ct_opts[sel]                
+
+            with fc3:
+                year_opts = ["Todos"] + list(range(date.today().year - 1, date.today().year + 1))
+                # year_opts = ["Todos"] + list(range(2021, date.today().year + 1))
+                year_sel  = st.selectbox("Ano", year_opts,
+                                         index=year_opts.index(date.today().year),
+                                         key="dash_year")
+                filter_year = None if year_sel == "Todos" else int(year_sel)
+
+            with fc4:
+                month_opts = {"Todos": None}
+                month_opts.update({month_name_pt(m): m for m in range(1, 13)})
+                month_labels    = list(month_opts.keys())
+                cur_month_label = month_name_pt(date.today().month)
+                month_sel       = st.selectbox("Mês", month_labels,
+                                               index=month_labels.index(cur_month_label),
+                                               key="dash_month")
+                filter_month = month_opts[month_sel]
+                
 
         if not contracts:
             st.warning("Nenhum contrato encontrado para o status selecionado.")
@@ -162,11 +161,11 @@ def _resolve_months(filter_month) -> list[int]:
 
 def _period_label(filter_year, filter_month) -> str:
     if filter_year and filter_month:
-        return date(filter_year, filter_month, 1).strftime("%B/%Y").capitalize()
+        return f"{month_name_pt(filter_month)}/{filter_year}"
     if filter_year:
         return f"Ano {filter_year} (todos os meses)"
     if filter_month:
-        return f"{date(2021, filter_month, 1).strftime('%B').capitalize()} (todos os anos)"
+        return f"{month_name_pt(filter_month)} (todos os anos)"
     return "Todos os períodos"
 
 
@@ -195,7 +194,7 @@ def _render_nf_alert(session, contracts, year: int, filter_contract_id) -> None:
                 is_current = (year == today.year and m == today.month)
                 item = {
                     "Contrato": label,
-                    "Mês/Ano": date(year, m, 1).strftime("%B/%Y").capitalize(),
+                    "Mês/Ano": f"{month_name_pt(m)}/{year}",
                     "Status": "🔄 Em andamento" if is_current else "⚠️ NF Pend. de Envio",
                 }
                 (em_andamento if is_current else pendentes).append(item)

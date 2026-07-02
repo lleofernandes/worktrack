@@ -9,6 +9,7 @@ import streamlit as st
 import plotly.graph_objects as go
 
 from database.models import Contract
+from utils.date_utils import month_name_pt
 
 from services.analytics_service import (
     get_daily_revenue,
@@ -87,7 +88,7 @@ def _render_daily_detail(session, contract_id: int, year: int, month: int) -> No
     ct    = session.get(Contract, contract_id)
     label = f"{ct.company.name if ct and ct.company else '?'}" if ct else f"#{contract_id}"
     st.subheader(
-        f"📅 Detalhe Diário — {label} ({date(year, month, 1).strftime('%B/%Y').capitalize()})"
+        f"📅 Detalhe Diário — {label} ({month_name_pt(month)}/{year})"
     )
 
     daily = get_daily_revenue(session, contract_id, year, month)

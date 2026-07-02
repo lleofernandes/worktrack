@@ -22,6 +22,7 @@ from database.repository import (
     WorkLogRepository,
 )
 from utils.calculations import calc_worked_hours
+from utils.date_utils import month_name_pt
 from utils.toast_helper import set_toast, show_pending_toast
 
 
@@ -506,10 +507,10 @@ def _render_history(session) -> None:
 
         with hf4:
             month_opts = {"Todos": None}
-            month_opts.update({date(2021, m, 1).strftime("%B").capitalize(): m for m in range(1, 13)})
+            month_opts.update({month_name_pt(m): m for m in range(1, 13)})
             month_labels = list(month_opts.keys())
-            cur_month_label = date(2021, date.today().month, 1).strftime("%B").capitalize()
-            sel_month = st.selectbox("Mes", month_labels, index=month_labels.index(cur_month_label), key="hist_month")
+            cur_month_label = month_name_pt(date.today().month)
+            sel_month = st.selectbox("Mês", month_labels, index=month_labels.index(cur_month_label), key="hist_month")
             filter_month = month_opts[sel_month]
 
     logs = WorkLogRepository.list_filtered(session, contract_id=filter_ct_id, year=filter_year, month=filter_month)
@@ -602,6 +603,12 @@ def _render_history(session) -> None:
 # Exportadores
 # ---------------------------------------------------------------------------
 
+def _decimal_to_hhmm(hours: float) -> str:
+    total_minutes = round(hours * 60)
+    h, m = divmod(total_minutes, 60)
+    return f"{h:02d}:{m:02d}"
+
+
 def _export_excel(df, year, month) -> bytes:
     wb = openpyxl.Workbook()
     ws = wb.active
@@ -626,6 +633,11 @@ def _export_excel(df, year, month) -> bytes:
     ws["A2"].alignment = Alignment(horizontal="center")
 
     cols = list(df.columns)
+    horas_col_idx    = cols.index("Horas") + 1    if "Horas"    in cols else None
+    projeto_col_idx  = cols.index("Projeto") + 1  if "Projeto"  in cols else None
+    descricao_col_idx = cols.index("Descricao") + 1 if "Descricao" in cols else None
+    left_cols = {projeto_col_idx, descricao_col_idx}
+
     for col_idx, col_name in enumerate(cols, start=1):
         cell = ws.cell(row=4, column=col_idx, value=col_name)
         cell.fill = header_fill
@@ -637,15 +649,21 @@ def _export_excel(df, year, month) -> bytes:
     for row_idx, row in enumerate(df.itertuples(index=False), start=5):
         fill = alt_fill if row_idx % 2 == 0 else None
         for col_idx, value in enumerate(row, start=1):
+            if col_idx == horas_col_idx and value is not None:
+                value = _decimal_to_hhmm(float(value))
+            align = "left" if col_idx in left_cols else "center"
             cell = ws.cell(row=row_idx, column=col_idx, value=value)
             cell.border = border
-            cell.alignment = Alignment(horizontal="center")
+            cell.alignment = Alignment(horizontal=align, wrap_text=(col_idx in left_cols))
             if fill:
                 cell.fill = fill
 
     total_row = len(df) + 6
-    ws.cell(row=total_row, column=1, value="TOTAL HORAS").font = Font(bold=True)
-    ws.cell(row=total_row, column=9, value=df["Horas"].sum()).font = Font(bold=True)
+    lbl_cell = ws.cell(row=total_row, column=1, value="TOTAL HORAS")
+    lbl_cell.font = Font(bold=True)
+    total_cell = ws.cell(row=total_row, column=horas_col_idx or 9,
+                         value=_decimal_to_hhmm(df["Horas"].sum()))
+    total_cell.font = Font(bold=True)
 
     col_widths = [8, 12, 25, 14, 20, 8, 8, 15, 8, 13, 40]
     for i, width in enumerate(col_widths, start=1):
@@ -690,7 +708,7 @@ def _export_pdf(df, year, month, total_horas: float) -> bytes:
 
     pdf.set_font("Helvetica", "B", 9)
     pdf.set_text_color(1, 105, 111)
-    pdf.cell(0, 6, f"Total de Horas: {total_horas:.2f}h  |  Total de Registros: {len(df)}", ln=True, align="C")
+    pdf.cell(0, 6, f"Total de Horas: {_decimal_to_hhmm(total_horas)}  |  Total de Registros: {len(df)}", ln=True, align="C")
     pdf.ln(3)
 
     cols   = ["Data", "Cliente", "Contrato", "Projeto", "Horas", "Descrição"]
@@ -717,11 +735,12 @@ def _export_pdf(df, year, month, total_horas: float) -> bytes:
             _clean(str(row.get("Cliente", ""))),
             _clean(str(row.get("Contrato", ""))),
             _clean(str(row.get("Projeto", ""))),
-            _clean(f"{float(horas_val):.2f}"),
+            _clean(_decimal_to_hhmm(float(horas_val))),
             _clean(desc_fmt),
         ]
-        for val, w in zip(values, widths):
-            pdf.cell(w, 6, str(val), border=1, align="C", fill=fill)
+        aligns = ["C", "C", "C", "L", "C", "L"]
+        for val, w, align in zip(values, widths, aligns):
+            pdf.cell(w, 6, str(val), border=1, align=align, fill=fill)
         pdf.ln()
 
     return bytes(pdf.output())
