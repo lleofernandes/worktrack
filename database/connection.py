@@ -1,20 +1,16 @@
-# pip install sqlalchemy psycopg2-binary
-import streamlit as st
 from sqlalchemy import create_engine
 from sqlalchemy.orm import declarative_base, sessionmaker
 
+from core.env import get_database_url
 
-DATABASE_URL = st.secrets["DATABASE_URL"]
+DATABASE_URL = get_database_url()
 
-engine = create_engine(
-    DATABASE_URL,
-    pool_pre_ping=True
-)
+engine = create_engine(DATABASE_URL)
 
 SessionLocal = sessionmaker(
     autocommit=False,
     autoflush=False,
-    bind=engine
+    bind=engine,
 )
 
 Base = declarative_base()
@@ -25,5 +21,5 @@ def get_session():
 
 
 def init_db():
-    from database.models import Company, WorkLog, Invoice
+    from database.models import Company, WorkLog, Invoice  # noqa: F401
     Base.metadata.create_all(bind=engine)
