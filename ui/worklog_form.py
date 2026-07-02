@@ -673,7 +673,7 @@ def _export_excel(df, year, month) -> bytes:
     buf = io.BytesIO()
     wb.save(buf)
     return buf.getvalue()
-
+    
 
 def _clean(val: str) -> str:
     return (str(val)
