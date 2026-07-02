@@ -7,6 +7,16 @@ from __future__ import annotations
 from datetime import date, timedelta
 from sqlalchemy.orm import Session
 
+_MONTHS_PT = [
+    "", "Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho",
+    "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro",
+]
+
+
+def month_name_pt(month: int) -> str:
+    """Retorna o nome do mês em português (ex.: month_name_pt(3) → 'Março')."""
+    return _MONTHS_PT[month]
+
 
 def get_weekdays_in_month(year: int, month: int) -> list[date]:
     """Todos os dias úteis (seg-sex) do mês, sem considerar feriados."""
