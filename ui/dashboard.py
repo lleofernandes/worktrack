@@ -20,7 +20,7 @@ from services.analytics_service import (
     get_all_contracts_metrics,    
     get_monthly_metrics,
 )
-from utils.calculations import calc_productivity
+from utils.calculations import calc_productivity, hours_to_hhmm
 from utils.date_utils import month_name_pt
 from utils.toast_helper import show_pending_toast
 
@@ -245,9 +245,9 @@ def _render_kpi_cards(metrics_list) -> None:
     c1, c2, c3, c4 = st.columns(4)
     c1.metric("Dias Úteis",        f"{biz_days}")
     c2.metric("Dias Trabalhados",  f"{worked_days}")
-    c3.metric("Horas Esperadas",   f"{float(total_expected):.1f}h")
-    c4.metric("Horas Trabalhadas", f"{float(total_worked):.1f}h",
-              delta=f"{float(total_worked - total_expected):.1f}h")
+    c3.metric("Horas Esperadas",   hours_to_hhmm(float(total_expected)))
+    c4.metric("Horas Trabalhadas", hours_to_hhmm(float(total_worked)),
+              delta=hours_to_hhmm(float(total_worked - total_expected), signed=True))
 
     st.divider()
     st.subheader("💰 Receita & Produtividade")

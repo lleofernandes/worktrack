@@ -21,7 +21,7 @@ from database.repository import (
     ProjectRepository,
     WorkLogRepository,
 )
-from utils.calculations import calc_worked_hours
+from utils.calculations import calc_worked_hours, hours_to_hhmm
 from utils.date_utils import month_name_pt
 from utils.toast_helper import set_toast, show_pending_toast
 
@@ -558,7 +558,7 @@ def _render_history(session) -> None:
 
     mc1, mc2, mc3, mc4, mc5 = st.columns([2, 2, 2, 1.5, 1.5])
     mc1.metric("Total de Registros", total_registros)
-    mc2.metric("Total de Horas", f"{total_horas:.2f}h")
+    mc2.metric("Total de Horas", hours_to_hhmm(total_horas))
     mc3.metric("Contratos", len(set(df["Contrato"].tolist())))
 
     with mc4:
@@ -608,10 +608,6 @@ def _render_history(session) -> None:
 # Exportadores
 # ---------------------------------------------------------------------------
 
-def _decimal_to_hhmm(hours: float) -> str:
-    total_minutes = round(hours * 60)
-    h, m = divmod(total_minutes, 60)
-    return f"{h:02d}:{m:02d}"
 
 
 def _export_excel(df, year, month) -> bytes:
