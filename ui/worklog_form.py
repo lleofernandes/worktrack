@@ -743,7 +743,7 @@ def _export_pdf(df, year, month, total_horas: float, non_work_hour: bool = False
         pdf.set_fill_color(240, 248, 248) if fill else pdf.set_fill_color(255, 255, 255)
         desc     = str(row.get("Descricao", "") or "")
         if non_work_hour:
-            desc_fmt = (desc[:130] + "...") if len(desc) > 130 else desc
+            desc_fmt = (desc[:118] + "...") if len(desc) > 118 else desc
             values = [
                 _clean(str(row.get("Data", ""))),
                 _clean(str(row.get("Cliente", ""))),
