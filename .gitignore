@@ -17,3 +17,4 @@ files_project/
 teste*
 seed.py
 .streamlit/secrets.toml
+auto_merge*

@@ -66,3 +66,24 @@ def calc_expected_revenue(expected_hours: Decimal, hour_rate: Decimal) -> Decima
 def calc_revenue_diff(actual: Decimal, expected: Decimal) -> Decimal:
     """Diferença entre receita realizada e esperada (positivo = acima da meta)."""
     return (actual - expected).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+
+
+def hours_to_hhmm(hours: float, signed: bool = False) -> str:
+    """Converte horas decimais para o formato HH:MM.
+
+    Args:
+        hours:  valor em horas (pode ser negativo quando signed=True).
+        signed: se True, prefixa '+' ou '-' (útil para deltas).
+
+    Exemplos:
+        hours_to_hhmm(8.5)          → '08:30'
+        hours_to_hhmm(-1.25, signed=True) → '-01:15'
+        hours_to_hhmm(2.0,   signed=True) → '+02:00'
+    """
+    negative = hours < 0
+    total_minutes = round(abs(hours) * 60)
+    h, m = divmod(total_minutes, 60)
+    result = f"{h:02d}:{m:02d}"
+    if signed:
+        result = ("-" if negative else "+") + result
+    return result
