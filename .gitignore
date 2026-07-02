@@ -13,7 +13,7 @@ venv/
 dist/
 build/
 files_project/
-worktrack.db
+*worktrack*
 teste*
 seed.py
 .streamlit/secrets.toml
