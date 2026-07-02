@@ -651,7 +651,7 @@ def _export_excel(df, year, month) -> bytes:
         fill = alt_fill if row_idx % 2 == 0 else None
         for col_idx, value in enumerate(row, start=1):
             if col_idx == horas_col_idx and value is not None:
-                value = _decimal_to_hhmm(float(value))
+                value = hours_to_hhmm(float(value))
             align = "left" if col_idx in left_cols else "center"
             cell = ws.cell(row=row_idx, column=col_idx, value=value)
             cell.border = border
@@ -663,7 +663,7 @@ def _export_excel(df, year, month) -> bytes:
     lbl_cell = ws.cell(row=total_row, column=1, value="TOTAL HORAS")
     lbl_cell.font = Font(bold=True)
     total_cell = ws.cell(row=total_row, column=horas_col_idx or 9,
-                         value=_decimal_to_hhmm(df["Horas"].sum()))
+                         value=hours_to_hhmm(df["Horas"].sum()))
     total_cell.font = Font(bold=True)
 
     col_widths = [8, 12, 25, 14, 20, 8, 8, 15, 8, 13, 40]
@@ -712,7 +712,7 @@ def _export_pdf(df, year, month, total_horas: float, non_work_hour: bool = False
     if non_work_hour:
         pdf.cell(0, 6, f"Total de Registros: {len(df)}", ln=True, align="C")
     else:
-        pdf.cell(0, 6, f"Total de Horas: {_decimal_to_hhmm(total_horas)}  |  Total de Registros: {len(df)}", ln=True, align="C")
+        pdf.cell(0, 6, f"Total de Horas: {hours_to_hhmm(total_horas)}  |  Total de Registros: {len(df)}", ln=True, align="C")
     pdf.ln(3)
 
     if non_work_hour:
@@ -755,7 +755,7 @@ def _export_pdf(df, year, month, total_horas: float, non_work_hour: bool = False
                 _clean(str(row.get("Cliente", ""))),
                 _clean(str(row.get("Contrato", ""))),
                 _clean(str(row.get("Projeto", ""))),
-                _clean(_decimal_to_hhmm(float(horas_val))),
+                _clean(hours_to_hhmm(float(horas_val))),
                 _clean(desc_fmt),
             ]
         for val, w, align in zip(values, widths, aligns):
