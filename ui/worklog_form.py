@@ -572,9 +572,14 @@ def _render_history(session) -> None:
             width="stretch",
         )
 
+    non_work_hour = bool(logs) and all(
+        wl.contract and wl.contract.contract_type != ContractType.WORK_HOUR
+        for wl in logs
+    )
+
     with mc5:
         st.write("")
-        pdf_bytes = _export_pdf(df, filter_year, filter_month, total_horas)
+        pdf_bytes = _export_pdf(df, filter_year, filter_month, total_horas, non_work_hour)
         st.download_button(
             label="📄 PDF",
             data=pdf_bytes,
@@ -695,7 +700,7 @@ class PDFWithFooter(FPDF):
         self.cell(0, 6, texto, align="R")
 
 
-def _export_pdf(df, year, month, total_horas: float) -> bytes:
+def _export_pdf(df, year, month, total_horas: float, non_work_hour: bool = False) -> bytes:
     periodo = f"{month or 'Todos'}/{year or 'Todos'}"
     pdf = PDFWithFooter(periodo=periodo, orientation="L", unit="mm", format="A4")
     pdf.set_auto_page_break(auto=True, margin=15)
@@ -708,11 +713,20 @@ def _export_pdf(df, year, month, total_horas: float) -> bytes:
 
     pdf.set_font("Helvetica", "B", 9)
     pdf.set_text_color(1, 105, 111)
-    pdf.cell(0, 6, f"Total de Horas: {_decimal_to_hhmm(total_horas)}  |  Total de Registros: {len(df)}", ln=True, align="C")
+    if non_work_hour:
+        pdf.cell(0, 6, f"Total de Registros: {len(df)}", ln=True, align="C")
+    else:
+        pdf.cell(0, 6, f"Total de Horas: {_decimal_to_hhmm(total_horas)}  |  Total de Registros: {len(df)}", ln=True, align="C")
     pdf.ln(3)
 
-    cols   = ["Data", "Cliente", "Contrato", "Projeto", "Horas", "Descrição"]
-    widths = [20, 45, 20, 40, 20, 132]
+    if non_work_hour:
+        cols   = ["Data", "Cliente", "Contrato", "Projeto", "Descrição"]
+        widths = [20, 45, 20, 40, 152]
+        aligns = ["C", "C", "C", "C", "L"]
+    else:
+        cols   = ["Data", "Cliente", "Contrato", "Projeto", "Horas", "Descrição"]
+        widths = [20, 45, 20, 40, 20, 132]
+        aligns = ["C", "C", "C", "C", "C", "L"]
 
     pdf.set_font("Helvetica", "B", 8)
     pdf.set_fill_color(1, 105, 111)
@@ -728,17 +742,26 @@ def _export_pdf(df, year, month, total_horas: float) -> bytes:
         fill = i % 2 == 0
         pdf.set_fill_color(240, 248, 248) if fill else pdf.set_fill_color(255, 255, 255)
         desc     = str(row.get("Descricao", "") or "")
-        desc_fmt = (desc[:103] + "...") if len(desc) > 103 else desc
-        horas_val = row.get("Horas", 0) or 0
-        values = [
-            _clean(str(row.get("Data", ""))),
-            _clean(str(row.get("Cliente", ""))),
-            _clean(str(row.get("Contrato", ""))),
-            _clean(str(row.get("Projeto", ""))),
-            _clean(_decimal_to_hhmm(float(horas_val))),
-            _clean(desc_fmt),
-        ]
-        aligns = ["C", "C", "C", "L", "C", "L"]
+        if non_work_hour:
+            desc_fmt = (desc[:130] + "...") if len(desc) > 130 else desc
+            values = [
+                _clean(str(row.get("Data", ""))),
+                _clean(str(row.get("Cliente", ""))),
+                _clean(str(row.get("Contrato", ""))),
+                _clean(str(row.get("Projeto", ""))),
+                _clean(desc_fmt),
+            ]
+        else:
+            desc_fmt  = (desc[:100] + "...") if len(desc) > 100 else desc
+            horas_val = row.get("Horas", 0) or 0
+            values = [
+                _clean(str(row.get("Data", ""))),
+                _clean(str(row.get("Cliente", ""))),
+                _clean(str(row.get("Contrato", ""))),
+                _clean(str(row.get("Projeto", ""))),
+                _clean(_decimal_to_hhmm(float(horas_val))),
+                _clean(desc_fmt),
+            ]
         for val, w, align in zip(values, widths, aligns):
             pdf.cell(w, 6, str(val), border=1, align=align, fill=fill)
         pdf.ln()
