@@ -60,20 +60,30 @@ def _inject_js(script: str) -> None:
         components.html(f"<script>{script}</script>", height=0)
 
 
+def _cookie_js(name: str, value: str, max_age: int) -> str:
+    """Gera JS que define o cookie de forma robusta em HTTP e HTTPS.
+
+    - Usa SameSite=Lax (compatível com HTTPS sem precisar do flag Strict)
+    - Adiciona Secure automaticamente quando servido via HTTPS (PROD)
+    - Tenta document.cookie (iframe same-origin) e window.parent como fallback
+    """
+    return f"""
+(function() {{
+    var c = "{name}={value}; max-age={max_age}; path=/; SameSite=Lax";
+    if (window.location.protocol === "https:") c += "; Secure";
+    document.cookie = c;
+    try {{ window.parent.document.cookie = c; }} catch(e) {{}}
+}})();
+"""
+
+
 def _write_cookie(token: str) -> None:
     """Grava o cookie de sessão no run em que NÃO há st.rerun() pendente."""
-    max_age = _SESSION_HOURS * 3600
-    _inject_js(
-        f"window.parent.document.cookie = "
-        f'"{_COOKIE_NAME}={token}; max-age={max_age}; path=/; SameSite=Strict";'
-    )
+    _inject_js(_cookie_js(_COOKIE_NAME, token, _SESSION_HOURS * 3600))
 
 
 def _clear_cookie() -> None:
-    _inject_js(
-        f"window.parent.document.cookie = "
-        f'"{_COOKIE_NAME}=; max-age=0; path=/; SameSite=Strict";'
-    )
+    _inject_js(_cookie_js(_COOKIE_NAME, "", 0))
 
 
 # ---------------------------------------------------------------------------

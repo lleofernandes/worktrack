@@ -712,7 +712,7 @@ def _export_pdf(df, year, month, total_horas: float) -> bytes:
     pdf.ln(3)
 
     cols   = ["Data", "Cliente", "Contrato", "Projeto", "Horas", "Descrição"]
-    widths = [25, 65, 25, 50, 25, 87]
+    widths = [20, 45, 20, 40, 20, 132]
 
     pdf.set_font("Helvetica", "B", 8)
     pdf.set_fill_color(1, 105, 111)
@@ -728,7 +728,7 @@ def _export_pdf(df, year, month, total_horas: float) -> bytes:
         fill = i % 2 == 0
         pdf.set_fill_color(240, 248, 248) if fill else pdf.set_fill_color(255, 255, 255)
         desc     = str(row.get("Descricao", "") or "")
-        desc_fmt = (desc[:45] + "...") if len(desc) > 45 else desc
+        desc_fmt = (desc[:103] + "...") if len(desc) > 103 else desc
         horas_val = row.get("Horas", 0) or 0
         values = [
             _clean(str(row.get("Data", ""))),
